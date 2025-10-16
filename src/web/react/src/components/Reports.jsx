@@ -139,7 +139,7 @@ function Reports() {
 
   const getStatusBadge = (report) => {
     if (report.ventaCerrada || report.analizadoIA) {
-      return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(92, 25, 227, 0.1)', color: '#00CC7B' }}>Analizado con IA</span>;
+      return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(92, 25, 227, 0.1)', color: '#FD6144' }}>Analizado con IA</span>;
     }
     if (report.citaAgendada) {
       return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#16A34A' }}>Cita Agendada</span>;
@@ -317,7 +317,7 @@ function Reports() {
             className="px-4 py-2 border rounded-xl focus:outline-none transition-all text-sm"
             style={{ borderColor: '#E8EBED' }}
             onFocus={(e) => {
-              e.target.style.borderColor = '#00CC7B';
+              e.target.style.borderColor = '#FD6144';
               e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
             }}
             onBlur={(e) => {
@@ -339,7 +339,7 @@ function Reports() {
               className="px-4 py-2 border rounded-xl focus:outline-none transition-all text-sm"
               style={{ borderColor: '#E8EBED' }}
               onFocus={(e) => {
-                e.target.style.borderColor = '#00CC7B';
+                e.target.style.borderColor = '#FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }}
               onBlur={(e) => {
@@ -366,15 +366,15 @@ function Reports() {
           <button
             onClick={() => analyzeAllConversations(false)}
             className="px-4 py-2 text-white rounded-xl transition-all mr-2 min-w-[180px] text-sm font-medium disabled:opacity-50"
-            style={{ background: '#00CC7B' }}
+            style={{ background: '#FD6144' }}
             onMouseEnter={(e) => {
               if (!e.target.disabled) {
-                e.target.style.background = '#009958';
+                e.target.style.background = '#FD3244';
               }
             }}
             onMouseLeave={(e) => {
               if (!e.target.disabled) {
-                e.target.style.background = '#00CC7B';
+                e.target.style.background = '#FD6144';
               }
             }}
             disabled={reports.length === 0 || analyzing}
@@ -439,7 +439,7 @@ function Reports() {
               className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
               style={{ borderColor: '#E8EBED' }}
               onFocus={(e) => {
-                e.target.style.borderColor = '#00CC7B';
+                e.target.style.borderColor = '#FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }}
               onBlur={(e) => {
@@ -456,7 +456,7 @@ function Reports() {
               className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
               style={{ borderColor: '#E8EBED' }}
               onFocus={(e) => {
-                e.target.style.borderColor = '#00CC7B';
+                e.target.style.borderColor = '#FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }}
               onBlur={(e) => {
@@ -478,7 +478,7 @@ function Reports() {
               className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
               style={{ borderColor: '#E8EBED' }}
               onFocus={(e) => {
-                e.target.style.borderColor = '#00CC7B';
+                e.target.style.borderColor = '#FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }}
               onBlur={(e) => {
@@ -499,7 +499,7 @@ function Reports() {
               className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
               style={{ borderColor: '#E8EBED' }}
               onFocus={(e) => {
-                e.target.style.borderColor = '#00CC7B';
+                e.target.style.borderColor = '#FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }}
               onBlur={(e) => {
@@ -520,7 +520,7 @@ function Reports() {
               className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
               style={{ borderColor: '#E8EBED' }}
               onFocus={(e) => {
-                e.target.style.borderColor = '#00CC7B';
+                e.target.style.borderColor = '#FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }}
               onBlur={(e) => {
@@ -545,10 +545,10 @@ function Reports() {
           border: '1px solid rgba(92, 25, 227, 0.2)'
         }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium" style={{ color: '#00CC7B' }}>
+            <span className="text-sm font-medium" style={{ color: '#FD6144' }}>
               Analizando conversaciones con IA...
             </span>
-            <span className="text-sm font-semibold" style={{ color: '#00CC7B' }}>
+            <span className="text-sm font-semibold" style={{ color: '#FD6144' }}>
               {Math.round((analyzeProgress.current / analyzeProgress.total) * 100)}%
             </span>
           </div>
@@ -557,7 +557,7 @@ function Reports() {
               className="h-2 rounded-full transition-all duration-300"
               style={{
                 width: `${(analyzeProgress.current / analyzeProgress.total) * 100}%`,
-                background: '#00CC7B'
+                background: '#FD6144'
               }}
             />
           </div>
@@ -566,7 +566,7 @@ function Reports() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: '#00CC7B' }}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: '#FD6144' }}></div>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -617,7 +617,7 @@ function Reports() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex items-center">
                         {report.isAnalyzing && (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 mr-2" style={{ borderColor: '#00CC7B' }}></div>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 mr-2" style={{ borderColor: '#FD6144' }}></div>
                         )}
                         {analyzedIds.has(report.id) && !report.isAnalyzing && (
                           <span className="text-green-500 mr-2" title="Analizado">✓</span>
@@ -658,7 +658,7 @@ function Reports() {
                         checked={report.posibleVenta}
                         onChange={(e) => handleSaleStatusChange(report, 'posibleVenta', e.target.checked)}
                         className="h-4 w-4 border-gray-300 rounded cursor-pointer"
-                        style={{ accentColor: '#00CC7B' }}
+                        style={{ accentColor: '#FD6144' }}
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -667,7 +667,7 @@ function Reports() {
                         checked={report.ventaCerrada || report.analizadoIA || analyzedIds.has(report.id)}
                         disabled={true}
                         className="h-4 w-4 border-gray-300 rounded"
-                        style={{ accentColor: '#00CC7B' }}
+                        style={{ accentColor: '#FD6144' }}
                         title="Se marca automáticamente al analizar con IA"
                       />
                     </td>
@@ -677,7 +677,7 @@ function Reports() {
                         checked={report.citaAgendada || false}
                         onChange={(e) => handleSaleStatusChange(report, 'citaAgendada', e.target.checked)}
                         className="h-4 w-4 border-gray-300 rounded cursor-pointer"
-                        style={{ accentColor: '#00CC7B' }}
+                        style={{ accentColor: '#FD6144' }}
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -755,7 +755,7 @@ function Reports() {
               background: 'rgba(92, 25, 227, 0.08)',
               border: '1px solid rgba(92, 25, 227, 0.2)'
             }}>
-              <div className="text-sm" style={{ color: '#00CC7B' }}>Analizados con IA</div>
+              <div className="text-sm" style={{ color: '#FD6144' }}>Analizados con IA</div>
               <div className="text-2xl font-semibold text-gray-800">
                 {reports.filter(r => r.ventaCerrada || r.analizadoIA || analyzedIds.has(r.id)).length}
               </div>

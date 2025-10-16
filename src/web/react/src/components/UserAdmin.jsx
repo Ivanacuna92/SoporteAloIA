@@ -171,9 +171,9 @@ function UserAdmin() {
             setShowCreateModal(true);
           }}
           className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all"
-          style={{ background: '#00CC7B' }}
-          onMouseEnter={(e) => e.target.style.background = '#009958'}
-          onMouseLeave={(e) => e.target.style.background = '#00CC7B'}
+          style={{ background: '#FD6144' }}
+          onMouseEnter={(e) => e.target.style.background = '#FD3244'}
+          onMouseLeave={(e) => e.target.style.background = '#FD6144'}
         >
           + Crear Usuario
         </button>
@@ -201,7 +201,7 @@ function UserAdmin() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{
-                      background: user.active ? 'linear-gradient(135deg, #00CC7B 0%, #009958 100%)' : '#9CA3AF'
+                      background: user.active ? 'linear-gradient(135deg, #FD6144 0%, #FD3244 100%)' : '#9CA3AF'
                     }}>
                       {user.name?.charAt(0).toUpperCase()}
                     </div>
@@ -342,9 +342,9 @@ function UserAdmin() {
                 <button
                   type="submit"
                   className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
-                  style={{ background: '#00CC7B' }}
-                  onMouseEnter={(e) => e.target.style.background = '#009958'}
-                  onMouseLeave={(e) => e.target.style.background = '#00CC7B'}
+                  style={{ background: '#FD6144' }}
+                  onMouseEnter={(e) => e.target.style.background = '#FD3244'}
+                  onMouseLeave={(e) => e.target.style.background = '#FD6144'}
                 >
                   Crear Usuario
                 </button>
@@ -413,9 +413,9 @@ function UserAdmin() {
                 <button
                   type="submit"
                   className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
-                  style={{ background: '#00CC7B' }}
-                  onMouseEnter={(e) => e.target.style.background = '#009958'}
-                  onMouseLeave={(e) => e.target.style.background = '#00CC7B'}
+                  style={{ background: '#FD6144' }}
+                  onMouseEnter={(e) => e.target.style.background = '#FD3244'}
+                  onMouseLeave={(e) => e.target.style.background = '#FD6144'}
                 >
                   Guardar Cambios
                 </button>

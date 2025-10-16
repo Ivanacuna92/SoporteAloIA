@@ -185,9 +185,9 @@ class WhatsAppBot {
                 const from = msg.key.remoteJid;
                 const isGroup = from.endsWith('@g.us');
 
-                // Ignorar mensajes de grupos
-                if (isGroup) {
-                    console.log('📛 Mensaje de grupo ignorado - Funcionalidad de grupos desactivada');
+                // Solo responder en grupos - Ignorar mensajes privados/directos
+                if (!isGroup) {
+                    console.log('📛 Mensaje privado ignorado - Solo se responde en grupos');
                     return;
                 }
 
@@ -202,19 +202,20 @@ class WhatsAppBot {
                     return;
                 }
 
-                // Solo chats privados
-                const userId = from.replace('@s.whatsapp.net', '');
-                const userName = msg.pushName || userId;
+                // Para grupos: obtener ID del grupo y del participante
+                const groupId = from.replace('@g.us', '');
+                const participantId = msg.key.participant ? msg.key.participant.replace('@s.whatsapp.net', '') : '';
+                const userName = msg.pushName || participantId || groupId;
 
-                await logger.log('cliente', conversation, userId, userName, false);
+                await logger.log('cliente', conversation, groupId, userName, true);
 
                 // YA NO HAY IA - Solo registrar el mensaje entrante
                 // Los humanos responderán manualmente desde el panel
-                await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId}) - Esperando respuesta humana`);
+                await logger.log('SYSTEM', `Mensaje recibido en grupo ${groupId} de ${userName} (${participantId}) - Esperando respuesta humana`);
 
                 // Cancelar seguimiento si existe
-                if (followUpService.hasActiveFollowUp(userId)) {
-                    await followUpService.cancelFollowUp(userId, 'Cliente respondió');
+                if (followUpService.hasActiveFollowUp(groupId)) {
+                    await followUpService.cancelFollowUp(groupId, 'Cliente respondió');
                 }
                 
             } catch (error) {

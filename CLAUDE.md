@@ -96,7 +96,7 @@ WEB_PORT=3001
 
 ## Important Notes
 
-- The bot only responds to private messages (ignores groups)
+- The bot only responds to group messages (ignores private/direct messages)
 - Requires QR code scan for initial WhatsApp authentication
 - Web panel accessible at http://localhost:3001
 - Vite config includes ngrok domains for development tunneling

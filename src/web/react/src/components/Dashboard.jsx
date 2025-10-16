@@ -56,7 +56,7 @@ function Dashboard() {
           className="px-4 py-2 rounded-xl border bg-white text-gray-700 focus:outline-none transition-all text-sm"
           style={{ borderColor: '#E8EBED' }}
           onFocus={(e) => {
-            e.target.style.borderColor = '#00CC7B';
+            e.target.style.borderColor = '#FD6144';
             e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
           }}
           onBlur={(e) => {
@@ -112,13 +112,13 @@ function Dashboard() {
                 className="w-full transition-all cursor-pointer rounded-t"
                 style={{
                   height: `${(count / Math.max(...Object.values(stats?.messagesByHour || {1: 1}))) * 100}%`,
-                  background: '#00CC7B'
+                  background: '#FD6144'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = '#009958';
+                  e.target.style.background = '#FD3244';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = '#00CC7B';
+                  e.target.style.background = '#FD6144';
                 }}
               >
                 <span className="text-white text-xs font-medium flex justify-center pt-1">{count}</span>
@@ -156,7 +156,7 @@ function StatCard({ title, value, subtitle }) {
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = '#00CC7B';
+        e.currentTarget.style.borderColor = '#FD6144';
         e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.15)';
       }}
       onMouseLeave={(e) => {
@@ -178,15 +178,15 @@ function InsightCard({ title, value }) {
     <div
       className="rounded-xl text-white p-6 transition-all cursor-pointer"
       style={{
-        background: '#00CC7B',
+        background: '#FD6144',
         boxShadow: '0 4px 12px rgba(92, 25, 227, 0.2)'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#009958';
+        e.currentTarget.style.background = '#FD3244';
         e.currentTarget.style.boxShadow = '0 6px 16px rgba(92, 25, 227, 0.3)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = '#00CC7B';
+        e.currentTarget.style.background = '#FD6144';
         e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.2)';
       }}
     >

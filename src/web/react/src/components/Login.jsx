@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../services/api';
 import { ToastContainer } from './Toast';
 import { useToast } from '../hooks/useToast';
-import logoIcon from '../assets/icono_stori.png';
+import logoIcon from '../assets/icono.jpeg';
 
 function Login({ onLoginSuccess }) {
   const [formData, setFormData] = useState({
@@ -174,8 +174,8 @@ function Login({ onLoginSuccess }) {
             width: 140%;
             height: 140%;
             background:
-              radial-gradient(circle at 30% 20%, rgba(0, 204, 123, 0.04) 0%, transparent 50%),
-              radial-gradient(circle at 70% 80%, rgba(0, 204, 123, 0.03) 0%, transparent 60%);
+              radial-gradient(circle at 30% 20%, rgba(253, 97, 68, 0.04) 0%, transparent 50%),
+              radial-gradient(circle at 70% 80%, rgba(253, 97, 68, 0.03) 0%, transparent 60%);
             pointer-events: none;
             animation: floatOrbs 30s ease-in-out infinite;
           }
@@ -188,7 +188,7 @@ function Login({ onLoginSuccess }) {
             right: 0;
             bottom: 0;
             background:
-              linear-gradient(45deg, transparent 45%, rgba(0, 204, 123, 0.01) 50%, transparent 55%);
+              linear-gradient(45deg, transparent 45%, rgba(253, 97, 68, 0.01) 50%, transparent 55%);
             pointer-events: none;
           }
 
@@ -235,8 +235,8 @@ function Login({ onLoginSuccess }) {
 
           .mobile-input-large:focus {
             background: #ffffff !important;
-            border-color: #00CC7B !important;
-            box-shadow: 0 0 0 3px rgba(0, 204, 123, 0.08) !important;
+            border-color: #FD6144 !important;
+            box-shadow: 0 0 0 3px rgba(253, 97, 68, 0.08) !important;
             outline: none !important;
           }
 
@@ -244,18 +244,18 @@ function Login({ onLoginSuccess }) {
             padding: 1.2rem !important;
             font-size: 1.1rem !important;
             font-weight: 500 !important;
-            background: #00CC7B !important;
+            background: #FD6144 !important;
             border: none !important;
             color: white !important;
-            box-shadow: 0 4px 12px rgba(0, 204, 123, 0.2) !important;
+            box-shadow: 0 4px 12px rgba(253, 97, 68, 0.2) !important;
             border-radius: 12px !important;
             transition: all 0.2s ease !important;
           }
 
           .mobile-button-large:hover {
-            background: #009958 !important;
+            background: #FD3244 !important;
             transform: translateY(-1px) !important;
-            box-shadow: 0 6px 16px rgba(0, 204, 123, 0.3) !important;
+            box-shadow: 0 6px 16px rgba(253, 97, 68, 0.3) !important;
           }
 
           .mobile-text-dark {
@@ -318,8 +318,8 @@ function Login({ onLoginSuccess }) {
                     borderColor: '#E8EBED'
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#00CC7B';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
+                    e.target.style.borderColor = '#FD6144';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(253, 97, 68, 0.08)';
                   }}
                   onBlur={(e) => {
                     e.target.style.borderColor = '#E8EBED';
@@ -346,8 +346,8 @@ function Login({ onLoginSuccess }) {
                       borderColor: '#E8EBED'
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = '#00CC7B';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
+                      e.target.style.borderColor = '#FD6144';
+                      e.target.style.boxShadow = '0 0 0 3px rgba(253, 97, 68, 0.08)';
                     }}
                     onBlur={(e) => {
                       e.target.style.borderColor = '#E8EBED';
@@ -362,10 +362,10 @@ function Login({ onLoginSuccess }) {
                     onClick={togglePassword}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 md:text-gray-400 mobile-text-dark transition-colors"
                     style={{
-                      color: showPassword ? '#00CC7B' : '#9CA3AF'
+                      color: showPassword ? '#FD6144' : '#9CA3AF'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#00CC7B';
+                      e.currentTarget.style.color = '#FD6144';
                     }}
                     onMouseLeave={(e) => {
                       if (!showPassword) {
@@ -398,16 +398,16 @@ function Login({ onLoginSuccess }) {
                 disabled={loading}
                 className="w-full text-white py-3 md:py-3 mobile-button-large rounded-xl transition-all text-sm md:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: '#00CC7B'
+                  background: '#FD6144'
                 }}
                 onMouseEnter={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#009958';
+                    e.target.style.background = '#FD3244';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#00CC7B';
+                    e.target.style.background = '#FD6144';
                   }
                 }}
               >

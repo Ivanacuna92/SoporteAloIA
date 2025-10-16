@@ -251,7 +251,7 @@ function ChatPanel({ contact, onUpdateContact }) {
               className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
               style={{
                 background: showOptionsMenu ? 'rgba(92, 25, 227, 0.1)' : 'transparent',
-                color: showOptionsMenu ? '#00CC7B' : '#6B7280'
+                color: showOptionsMenu ? '#FD6144' : '#6B7280'
               }}
               onMouseEnter={(e) => {
                 if (!showOptionsMenu) {
@@ -378,7 +378,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                 border: '1px solid #E8EBED'
               } : {
                 borderRadius: '12px 12px 2px 12px',
-                backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#00CC7B',
+                backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#FD6144',
                 boxShadow: isMessageFromSupport ? '0 2px 8px rgba(249, 115, 22, 0.2)' : isMessageFromHuman ? '0 2px 8px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(92, 25, 227, 0.2)'
               }}>
                 <div className={`text-[10px] font-semibold mb-1 ${isClient ? 'text-gray-500' : 'text-white/80'}`}>
@@ -481,7 +481,7 @@ function ChatPanel({ contact, onUpdateContact }) {
             onFocus={(e) => {
               if (!e.target.disabled) {
                 e.target.style.background = '#ffffff';
-                e.target.style.border = '1px solid #00CC7B';
+                e.target.style.border = '1px solid #FD6144';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }
             }}
@@ -496,16 +496,16 @@ function ChatPanel({ contact, onUpdateContact }) {
             disabled={sending || !message.trim()}
             className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
-              background: '#00CC7B'
+              background: '#FD6144'
             }}
             onMouseEnter={(e) => {
               if (!e.target.disabled) {
-                e.target.style.background = '#009958';
+                e.target.style.background = '#FD3244';
               }
             }}
             onMouseLeave={(e) => {
               if (!e.target.disabled) {
-                e.target.style.background = '#00CC7B';
+                e.target.style.background = '#FD6144';
               }
             }}
           >
