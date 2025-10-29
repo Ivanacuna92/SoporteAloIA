@@ -29,7 +29,10 @@ class WebServer {
         }));
         this.app.use(express.json());
         this.app.use(cookieParser());
-        
+
+        // Servir archivos de medios (imágenes, videos, etc.)
+        this.app.use('/media', express.static(path.join(__dirname, '../../data/media')));
+
         // En producción, servir archivos estáticos de React build
         if (process.env.NODE_ENV === 'production') {
             this.app.use(express.static(path.join(__dirname, '../../dist')));

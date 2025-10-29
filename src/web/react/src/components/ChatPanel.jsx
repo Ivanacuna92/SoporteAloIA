@@ -388,7 +388,66 @@ function ChatPanel({ contact, onUpdateContact }) {
                    msg.type === 'BOT' ? 'Bot' : 'Sistema'}
                 </div>
                 <div className="text-sm leading-relaxed pr-16">
-                  {isClient || isHumanOrBot ? (
+                  {/* Mostrar imagen/video/documento si existe */}
+                  {msg.hasMedia && msg.mediaType && (
+                    <div className="mb-2">
+                      {msg.mediaType === 'image' && (
+                        <img
+                          src={msg.mediaUrl}
+                          alt={msg.mediaCaption || 'Imagen'}
+                          className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer"
+                          onClick={() => window.open(msg.mediaUrl, '_blank')}
+                          style={{ maxWidth: '300px' }}
+                        />
+                      )}
+                      {msg.mediaType === 'video' && (
+                        <video
+                          controls
+                          className="rounded-lg max-w-full max-h-64"
+                          style={{ maxWidth: '300px' }}
+                        >
+                          <source src={msg.mediaUrl} type={msg.mediaMimetype || 'video/mp4'} />
+                          Tu navegador no soporta video
+                        </video>
+                      )}
+                      {msg.mediaType === 'audio' && (
+                        <audio controls className="w-full">
+                          <source src={msg.mediaUrl} type={msg.mediaMimetype || 'audio/ogg'} />
+                          Tu navegador no soporta audio
+                        </audio>
+                      )}
+                      {msg.mediaType === 'document' && (
+                        <div className={`flex items-center gap-2 p-3 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>
+                          <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd"/>
+                          </svg>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{msg.mediaFilename || 'Documento'}</p>
+                            <a
+                              href={msg.mediaUrl}
+                              download={msg.mediaFilename}
+                              className="text-xs underline hover:opacity-80"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Descargar
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                      {msg.mediaType === 'sticker' && (
+                        <img
+                          src={msg.mediaUrl}
+                          alt="Sticker"
+                          className="max-w-full max-h-32 object-contain"
+                          style={{ maxWidth: '150px' }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mostrar texto del mensaje */}
+                  {msg.message && (isClient || isHumanOrBot ? (
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -413,7 +472,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                     </ReactMarkdown>
                   ) : (
                     msg.message
-                  )}
+                  ))}
                 </div>
                 <div className={`absolute bottom-1 right-2 text-[11px] flex items-center gap-1 ${isClient ? 'text-gray-500' : 'text-white/70'}`}>
                   <span>

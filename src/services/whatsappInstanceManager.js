@@ -1,5 +1,5 @@
 const makeWASocket = require('baileys').default;
-const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('baileys');
+const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = require('baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const database = require('./database');
@@ -254,11 +254,25 @@ class WhatsAppInstanceManager {
                 return;
             }
 
+            // Extraer el texto del mensaje
             const conversation = msg.message.conversation ||
                                msg.message.extendedTextMessage?.text ||
+                               msg.message.imageMessage?.caption ||
+                               msg.message.videoMessage?.caption ||
+                               msg.message.documentMessage?.caption ||
                                '';
 
-            if (!conversation || conversation.trim() === '') return;
+            // Detectar si el mensaje tiene medios
+            const hasMedia = !!(
+                msg.message.imageMessage ||
+                msg.message.videoMessage ||
+                msg.message.documentMessage ||
+                msg.message.audioMessage ||
+                msg.message.stickerMessage
+            );
+
+            // Si no hay conversación ni medios, ignorar
+            if (!conversation && !hasMedia) return;
 
             // Para grupos: obtener ID del grupo y del participante
             const groupId = from.replace('@g.us', '');
@@ -284,15 +298,25 @@ class WhatsAppInstanceManager {
                 return;
             }
 
-            // Log del mensaje con información del grupo
-            await logger.log('cliente', conversation, groupId, userName, true, supportUserId);
+            // Procesar medios si existen
+            let mediaInfo = null;
+            if (hasMedia) {
+                mediaInfo = await this.downloadAndSaveMedia(msg, groupId);
+            }
+
+            // Mensaje a guardar
+            const messageText = conversation || '[Archivo multimedia]';
+
+            // Log del mensaje con información del grupo y medios
+            await logger.log('cliente', messageText, groupId, userName, true, supportUserId, null, mediaInfo);
 
             // Asignar grupo a este usuario de soporte si no está asignado
             await this.assignClientToUser(groupId, supportUserId, true, groupName);
 
             // YA NO HAY IA - Solo registrar el mensaje entrante
             // Los humanos responderán manualmente desde el panel
-            await logger.log('SYSTEM', `Mensaje recibido en grupo ${groupName} de ${userName} (${participantId}) - Esperando respuesta humana`, supportUserId);
+            const mediaEmoji = hasMedia ? '📎 ' : '';
+            await logger.log('SYSTEM', `${mediaEmoji}Mensaje recibido en grupo ${groupName} de ${userName} (${participantId}) - Esperando respuesta humana`, supportUserId);
 
             // Cancelar seguimiento si existe
             if (followUpService.hasActiveFollowUp(groupId)) {
@@ -301,6 +325,84 @@ class WhatsAppInstanceManager {
 
         } catch (error) {
             console.error(`Error procesando mensaje (Usuario ${supportUserId}):`, error);
+        }
+    }
+
+    // Descargar y guardar medios
+    async downloadAndSaveMedia(msg, userId) {
+        try {
+            let mediaMessage = null;
+            let mediaType = null;
+            let mimetype = null;
+            let filename = null;
+
+            // Identificar tipo de medio
+            if (msg.message.imageMessage) {
+                mediaMessage = msg.message.imageMessage;
+                mediaType = 'image';
+                mimetype = mediaMessage.mimetype || 'image/jpeg';
+                filename = `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+            } else if (msg.message.videoMessage) {
+                mediaMessage = msg.message.videoMessage;
+                mediaType = 'video';
+                mimetype = mediaMessage.mimetype || 'video/mp4';
+                filename = `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+            } else if (msg.message.documentMessage) {
+                mediaMessage = msg.message.documentMessage;
+                mediaType = 'document';
+                mimetype = mediaMessage.mimetype || 'application/octet-stream';
+                filename = mediaMessage.fileName || `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+            } else if (msg.message.audioMessage) {
+                mediaMessage = msg.message.audioMessage;
+                mediaType = 'audio';
+                mimetype = mediaMessage.mimetype || 'audio/ogg';
+                filename = `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+            } else if (msg.message.stickerMessage) {
+                mediaMessage = msg.message.stickerMessage;
+                mediaType = 'sticker';
+                mimetype = mediaMessage.mimetype || 'image/webp';
+                filename = `${userId}_${Date.now()}.webp`;
+            }
+
+            if (!mediaMessage) {
+                return null;
+            }
+
+            // Descargar el medio
+            const buffer = await downloadMediaMessage(
+                msg,
+                'buffer',
+                {},
+                {
+                    logger: pino({ level: 'silent' })
+                }
+            );
+
+            // Determinar directorio según tipo
+            const mediaDir = path.join(process.cwd(), 'data', 'media', `${mediaType}s`);
+            await fs.mkdir(mediaDir, { recursive: true });
+
+            // Guardar archivo
+            const filePath = path.join(mediaDir, filename);
+            await fs.writeFile(filePath, buffer);
+
+            // Generar URL relativa para el frontend
+            const mediaUrl = `/media/${mediaType}s/${filename}`;
+
+            console.log(`📎 Medio guardado: ${mediaType} - ${filename}`);
+
+            return {
+                has_media: true,
+                media_type: mediaType,
+                media_url: mediaUrl,
+                media_mimetype: mimetype,
+                media_filename: filename,
+                media_caption: msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || null
+            };
+
+        } catch (error) {
+            console.error('Error descargando medio:', error);
+            return null;
         }
     }
 

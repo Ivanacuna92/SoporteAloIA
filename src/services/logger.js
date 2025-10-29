@@ -6,7 +6,7 @@ class Logger {
         this.isProcessingQueue = false;
     }
 
-    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null) {
+    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null) {
         const timestamp = new Date();
         const logEntry = {
             timestamp: timestamp.toISOString(),
@@ -18,12 +18,20 @@ class Logger {
             response,
             supportUserId,
             messageId,
-            status: messageId ? 'sent' : null // Si hay messageId, el mensaje fue enviado
+            status: messageId ? 'sent' : null, // Si hay messageId, el mensaje fue enviado
+            // Información de medios
+            has_media: mediaInfo?.has_media || false,
+            media_type: mediaInfo?.media_type || null,
+            media_url: mediaInfo?.media_url || null,
+            media_mimetype: mediaInfo?.media_mimetype || null,
+            media_filename: mediaInfo?.media_filename || null,
+            media_caption: mediaInfo?.media_caption || null
         };
 
         // Solo guardar en BD y mostrar en consola
         const insertedId = await this.saveToDB(logEntry);
-        this.printToConsole(logEntry.timestamp, role, message, userId, isGroup);
+        const mediaIndicator = mediaInfo?.has_media ? ` 📎[${mediaInfo.media_type}]` : '';
+        this.printToConsole(logEntry.timestamp, role, message + mediaIndicator, userId, isGroup);
 
         return insertedId;
     }
@@ -46,7 +54,14 @@ class Logger {
                 response: logEntry.response,
                 role: logEntry.role,
                 support_user_id: logEntry.supportUserId,
-                session_id: null
+                session_id: null,
+                // Campos de medios
+                has_media: logEntry.has_media || false,
+                media_type: logEntry.media_type,
+                media_url: logEntry.media_url,
+                media_mimetype: logEntry.media_mimetype,
+                media_filename: logEntry.media_filename,
+                media_caption: logEntry.media_caption
             });
             return result.insertId;
         } catch (error) {
@@ -156,7 +171,14 @@ class Logger {
                     messageId: log.message_id,
                     status: log.status,
                     response: log.response,
-                    supportUserId: log.support_user_id
+                    supportUserId: log.support_user_id,
+                    // Campos de medios
+                    hasMedia: log.has_media || false,
+                    mediaType: log.media_type,
+                    mediaUrl: log.media_url,
+                    mediaMimetype: log.media_mimetype,
+                    mediaFilename: log.media_filename,
+                    mediaCaption: log.media_caption
                 };
             });
         } catch (error) {
@@ -271,7 +293,14 @@ class Logger {
                 messageId: log.message_id,
                 status: log.status,
                 response: log.response,
-                supportUserId: log.support_user_id
+                supportUserId: log.support_user_id,
+                // Campos de medios
+                hasMedia: log.has_media || false,
+                mediaType: log.media_type,
+                mediaUrl: log.media_url,
+                mediaMimetype: log.media_mimetype,
+                mediaFilename: log.media_filename,
+                mediaCaption: log.media_caption
             }));
         } catch (error) {
             console.error('Error obteniendo logs por teléfono de cliente:', error);
