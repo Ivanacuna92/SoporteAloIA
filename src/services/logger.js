@@ -49,19 +49,19 @@ class Logger {
                 user_name: logEntry.userName,
                 is_group: logEntry.isGroup || false,
                 message: logEntry.message,
-                message_id: logEntry.messageId,
-                status: logEntry.status,
-                response: logEntry.response,
+                message_id: logEntry.messageId || null,
+                status: logEntry.status || null,
+                response: logEntry.response || null,
                 role: logEntry.role,
-                support_user_id: logEntry.supportUserId,
+                support_user_id: logEntry.supportUserId || null,
                 session_id: null,
-                // Campos de medios
+                // Campos de medios - convertir undefined a null
                 has_media: logEntry.has_media || false,
-                media_type: logEntry.media_type,
-                media_url: logEntry.media_url,
-                media_mimetype: logEntry.media_mimetype,
-                media_filename: logEntry.media_filename,
-                media_caption: logEntry.media_caption
+                media_type: logEntry.media_type || null,
+                media_url: logEntry.media_url || null,
+                media_mimetype: logEntry.media_mimetype || null,
+                media_filename: logEntry.media_filename || null,
+                media_caption: logEntry.media_caption || null
             });
             return result.insertId;
         } catch (error) {
