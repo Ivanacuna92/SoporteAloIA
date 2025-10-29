@@ -248,9 +248,9 @@ class WhatsAppInstanceManager {
             const from = msg.key.remoteJid;
             const isGroup = from.endsWith('@g.us');
 
-            // Ignorar mensajes de grupos
-            if (isGroup) {
-                console.log('📛 Mensaje de grupo ignorado - Funcionalidad de grupos desactivada');
+            // Solo aceptar mensajes de grupos - Ignorar mensajes privados/directos
+            if (!isGroup) {
+                console.log('📛 Mensaje privado ignorado - Solo se responde en grupos');
                 return;
             }
 
@@ -260,32 +260,43 @@ class WhatsAppInstanceManager {
 
             if (!conversation || conversation.trim() === '') return;
 
-            // Solo chats individuales
-            const userId = from.replace('@s.whatsapp.net', '');
-            const userName = msg.pushName || userId;
+            // Para grupos: obtener ID del grupo y del participante
+            const groupId = from.replace('@g.us', '');
+            const participantId = msg.key.participant ? msg.key.participant.replace('@s.whatsapp.net', '') : '';
 
-            // VERIFICAR SI EL CLIENTE ESTÁ ASIGNADO A OTRO USUARIO DE SOPORTE
-            const existingAssignment = await this.getClientAssignment(userId);
+            // Obtener nombre del grupo (intentar desde el mensaje o usar el ID)
+            let groupName = groupId;
+            try {
+                const groupMetadata = await instanceData.sock.groupMetadata(from);
+                groupName = groupMetadata.subject || groupId;
+            } catch (error) {
+                console.log('No se pudo obtener metadata del grupo, usando ID');
+            }
+
+            const userName = msg.pushName || participantId || 'Usuario desconocido';
+
+            // VERIFICAR SI EL GRUPO ESTÁ ASIGNADO A OTRO USUARIO DE SOPORTE
+            const existingAssignment = await this.getClientAssignment(groupId);
 
             if (existingAssignment && existingAssignment.support_user_id !== supportUserId) {
-                // Este cliente está asignado a otro usuario de soporte, ignorar el mensaje
-                console.log(`⏭️  Mensaje ignorado: Cliente ${userId} está asignado a usuario ${existingAssignment.support_user_id}, no a ${supportUserId}`);
+                // Este grupo está asignado a otro usuario de soporte, ignorar el mensaje
+                console.log(`⏭️  Mensaje ignorado: Grupo ${groupId} está asignado a usuario ${existingAssignment.support_user_id}, no a ${supportUserId}`);
                 return;
             }
 
-            // Log del mensaje
-            await logger.log('cliente', conversation, userId, userName, false, supportUserId);
+            // Log del mensaje con información del grupo
+            await logger.log('cliente', conversation, groupId, userName, true, supportUserId);
 
-            // Asignar cliente a este usuario de soporte si no está asignado (solo chats individuales)
-            await this.assignClientToUser(userId, supportUserId, false, null);
+            // Asignar grupo a este usuario de soporte si no está asignado
+            await this.assignClientToUser(groupId, supportUserId, true, groupName);
 
             // YA NO HAY IA - Solo registrar el mensaje entrante
             // Los humanos responderán manualmente desde el panel
-            await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId}) - Esperando respuesta humana`, supportUserId);
+            await logger.log('SYSTEM', `Mensaje recibido en grupo ${groupName} de ${userName} (${participantId}) - Esperando respuesta humana`, supportUserId);
 
             // Cancelar seguimiento si existe
-            if (followUpService.hasActiveFollowUp(userId)) {
-                await followUpService.cancelFollowUp(userId, 'Cliente respondió');
+            if (followUpService.hasActiveFollowUp(groupId)) {
+                await followUpService.cancelFollowUp(groupId, 'Cliente respondió');
             }
 
         } catch (error) {
@@ -488,7 +499,8 @@ class WhatsAppInstanceManager {
             throw new Error('WhatsApp no está conectado');
         }
 
-        const chatId = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        // El chatId ya debe venir formateado desde el endpoint, pero por si acaso
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
         console.log('📤 [INSTANCE-MANAGER] ChatId final:', chatId);
         console.log('📤 [INSTANCE-MANAGER] Enviando mensaje...');
 

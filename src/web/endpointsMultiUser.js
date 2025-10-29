@@ -272,7 +272,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     return {
                         phone: assignment.client_phone,
                         name: assignment.group_name || assignment.client_phone,
-                        isGroup: false, // Grupos desactivados
+                        isGroup: assignment.is_group || false, // Ahora puede ser grupo
                         groupName: assignment.group_name,
                         messages: messages.reverse(), // Orden cronológico
                         totalMessages: messages.length,
@@ -314,8 +314,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
             console.log('📨 [SEND-MESSAGE] Phone:', phone, 'Message length:', message.length);
 
             const instanceManager = global.whatsappInstanceManager;
-            // Solo chats individuales (grupos desactivados)
-            const chatId = `${phone}@s.whatsapp.net`;
+            // Solo grupos (terminan en @g.us)
+            const chatId = `${phone}@g.us`;
 
             console.log('📨 [SEND-MESSAGE] ChatId formateado:', chatId);
             console.log('📨 [SEND-MESSAGE] Llamando instanceManager.sendMessage...');
@@ -324,9 +324,9 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             console.log('✅ [SEND-MESSAGE] Mensaje enviado exitosamente');
 
-            // Registrar el mensaje (isGroup siempre false)
+            // Registrar el mensaje (isGroup siempre true)
             const logger = require('../services/logger');
-            await logger.log('soporte', message, phone, req.user.name, false, req.user.id);
+            await logger.log('soporte', message, phone, req.user.name, true, req.user.id);
 
             console.log('✅ [SEND-MESSAGE] Mensaje registrado en logs');
 

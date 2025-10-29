@@ -30,9 +30,12 @@ npm run preview
 
 ### Core Components
 
-1. **WhatsApp Bot** (`src/bot/whatsappBot.js`)
-   - Uses whatsapp-web.js library with Puppeteer for browser automation
-   - Handles message events, session management, and QR authentication
+1. **WhatsApp Instance Manager** (`src/services/whatsappInstanceManager.js`)
+   - Multi-user system: Each support user has their own WhatsApp instance
+   - Uses Baileys library for WhatsApp Web API
+   - Handles message events, session management, and QR authentication per user
+   - **ONLY accepts group messages** - ignores private/direct messages
+   - Auto-assigns groups to support users on first message
    - Integrates with human mode manager for operator takeover functionality
 
 2. **AI Service** (`src/services/aiService.js`)
@@ -96,8 +99,10 @@ WEB_PORT=3001
 
 ## Important Notes
 
-- The bot only responds to group messages (ignores private/direct messages)
-- Requires QR code scan for initial WhatsApp authentication
+- The bot **ONLY responds to group messages** (ignores private/direct messages)
+- Multi-user system: Each support user has their own WhatsApp instance
+- Groups are automatically assigned to the first support user who receives a message
+- Requires QR code scan for initial WhatsApp authentication per user
 - Web panel accessible at http://localhost:3001
 - Vite config includes ngrok domains for development tunneling
 - No test framework currently configured
