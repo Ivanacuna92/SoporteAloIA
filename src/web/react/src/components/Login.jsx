@@ -440,10 +440,10 @@ function Login({ onLoginSuccess }) {
         {/* Credenciales de ejemplo */}
         <div className="w-full max-w-sm mx-auto text-center mt-6 text-xs text-gray-500">
           <p>
-            <span className="font-medium text-gray-600">Admin:</span> admin@stori.com
+            <span className="font-medium text-gray-600">Admin:</span> admin@soporteAloIA.com
           </p>
           <p>
-            <span className="font-medium text-gray-600">Contraseña:</span> Stori*2025
+            <span className="font-medium text-gray-600">Contraseña:</span> SoporteAloIA*2025
           </p>
         </div>
 
