@@ -265,19 +265,42 @@ class WhatsAppInstanceManager {
             // Procesar menciones (reemplazar números por nombres)
             const mentionedJids = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
             if (mentionedJids.length > 0 && conversation) {
+                console.log(`📝 Procesando ${mentionedJids.length} menciones en el mensaje`);
+
                 for (const jid of mentionedJids) {
                     const phoneNumber = jid.replace('@s.whatsapp.net', '');
                     try {
                         // Intentar obtener el nombre del contacto mencionado
                         const mentionedName = await this.getContactName(instanceData.sock, jid, from);
+
                         if (mentionedName) {
-                            // Reemplazar @número por @nombre
-                            conversation = conversation.replace(new RegExp(`@${phoneNumber}`, 'g'), `@${mentionedName}`);
+                            // Crear regex más flexible para reemplazar menciones
+                            // Buscar: @número_completo o @últimos_dígitos
+                            const fullNumberPattern = new RegExp(`@${phoneNumber.replace(/\+/g, '\\+')}`, 'g');
+                            const shortNumberPattern = new RegExp(`@${phoneNumber.slice(-10)}`, 'g'); // Últimos 10 dígitos
+
+                            // Intentar reemplazar con el patrón completo primero
+                            let replaced = false;
+                            if (conversation.includes(`@${phoneNumber}`)) {
+                                conversation = conversation.replace(fullNumberPattern, `@${mentionedName}`);
+                                replaced = true;
+                                console.log(`✅ Reemplazado @${phoneNumber} por @${mentionedName}`);
+                            }
+
+                            // Si no funcionó, intentar con los últimos 10 dígitos
+                            if (!replaced && conversation.includes(`@${phoneNumber.slice(-10)}`)) {
+                                conversation = conversation.replace(shortNumberPattern, `@${mentionedName}`);
+                                console.log(`✅ Reemplazado @${phoneNumber.slice(-10)} por @${mentionedName}`);
+                            }
+                        } else {
+                            console.log(`⚠️  No se pudo obtener nombre para ${phoneNumber}`);
                         }
                     } catch (error) {
-                        console.log(`No se pudo obtener nombre para ${phoneNumber}`);
+                        console.log(`❌ Error obteniendo nombre para ${phoneNumber}:`, error.message);
                     }
                 }
+
+                console.log(`📝 Mensaje final con menciones procesadas: ${conversation}`);
             }
 
             // Detectar si el mensaje tiene medios
@@ -303,11 +326,11 @@ class WhatsAppInstanceManager {
                 const groupMetadata = await instanceData.sock.groupMetadata(from);
                 groupName = groupMetadata.subject || groupId;
 
-                // Intentar obtener imagen de perfil del grupo
+                // Descargar y guardar imagen de perfil del grupo localmente
                 try {
-                    groupPicture = await instanceData.sock.profilePictureUrl(from, 'image');
+                    groupPicture = await this.downloadAndSaveProfilePicture(instanceData.sock, from, 'group');
                 } catch (picError) {
-                    console.log('No se pudo obtener imagen del grupo');
+                    console.log('No se pudo descargar imagen del grupo');
                 }
             } catch (error) {
                 console.log('No se pudo obtener metadata del grupo, usando ID');
@@ -330,8 +353,8 @@ class WhatsAppInstanceManager {
                 mediaInfo = await this.downloadAndSaveMedia(msg, groupId);
             }
 
-            // Mensaje a guardar
-            const messageText = conversation || '[Archivo multimedia]';
+            // Mensaje a guardar (solo el caption/texto si existe, vacío si es solo media)
+            const messageText = conversation || '';
 
             // Log del mensaje con información del grupo y medios
             await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, null, mediaInfo);
@@ -432,6 +455,53 @@ class WhatsAppInstanceManager {
         }
     }
 
+    // Descargar y guardar foto de perfil
+    async downloadAndSaveProfilePicture(sock, jid, type = 'group') {
+        try {
+            // Intentar obtener la URL de la foto de perfil
+            const profilePicUrl = await sock.profilePictureUrl(jid, 'image');
+
+            if (!profilePicUrl) {
+                console.log(`No hay foto de perfil disponible para ${jid}`);
+                return null;
+            }
+
+            // Descargar la imagen
+            const https = require('https');
+            const imageBuffer = await new Promise((resolve, reject) => {
+                https.get(profilePicUrl, (response) => {
+                    const chunks = [];
+                    response.on('data', (chunk) => chunks.push(chunk));
+                    response.on('end', () => resolve(Buffer.concat(chunks)));
+                    response.on('error', reject);
+                }).on('error', reject);
+            });
+
+            // Crear directorio para fotos de perfil
+            const profilePicsDir = path.join(process.cwd(), 'data', 'media', 'profile_pictures');
+            await fs.mkdir(profilePicsDir, { recursive: true });
+
+            // Generar nombre de archivo único
+            const cleanJid = jid.replace('@g.us', '').replace('@s.whatsapp.net', '');
+            const filename = `${type}_${cleanJid}_${Date.now()}.jpg`;
+            const filePath = path.join(profilePicsDir, filename);
+
+            // Guardar archivo
+            await fs.writeFile(filePath, imageBuffer);
+
+            // Generar URL relativa para el frontend
+            const profilePicUrl_local = `/media/profile_pictures/${filename}`;
+
+            console.log(`📸 Foto de perfil guardada: ${type} - ${filename}`);
+
+            return profilePicUrl_local;
+        } catch (error) {
+            // Es normal que algunos usuarios/grupos no tengan foto de perfil
+            console.log(`No se pudo obtener foto de perfil para ${jid}: ${error.message}`);
+            return null;
+        }
+    }
+
     // Procesar mensaje y generar respuesta
     async processMessage(supportUserId, userId, userMessage, chatId) {
         await sessionManager.addMessage(userId, 'user', userMessage, chatId);
@@ -484,9 +554,10 @@ class WhatsAppInstanceManager {
                 if (existingAssignment.support_user_id === supportUserId) {
                     const updateData = { last_message_at: new Date() };
 
-                    // Si hay imagen y no existe o es diferente, actualizarla
-                    if (groupPicture && (!existingAssignment.group_picture || existingAssignment.group_picture !== groupPicture)) {
+                    // SIEMPRE actualizar la imagen si viene una nueva (las URLs locales cambian)
+                    if (groupPicture) {
                         updateData.group_picture = groupPicture;
+                        console.log(`📸 Actualizando foto de perfil para ${clientPhone}: ${groupPicture}`);
                     }
 
                     await database.update(
@@ -511,6 +582,9 @@ class WhatsAppInstanceManager {
                     last_message_at: new Date()
                 });
                 console.log(`✅ Cliente ${clientPhone} asignado a usuario ${supportUserId}`);
+                if (groupPicture) {
+                    console.log(`📸 Foto de perfil guardada: ${groupPicture}`);
+                }
             }
         } catch (error) {
             console.error('Error asignando cliente a usuario:', error);
@@ -658,32 +732,54 @@ class WhatsAppInstanceManager {
     // Obtener nombre de contacto mencionado
     async getContactName(sock, jid, groupJid) {
         try {
-            // Intentar obtener metadata del grupo
-            const groupMetadata = await sock.groupMetadata(groupJid);
+            // Método 1: Obtener metadata del grupo y buscar en participantes
+            try {
+                const groupMetadata = await sock.groupMetadata(groupJid);
+                const participant = groupMetadata.participants.find(p => p.id === jid);
 
-            // Buscar el participante en la lista de participantes
-            const participant = groupMetadata.participants.find(p => p.id === jid);
-
-            if (participant) {
-                // Intentar obtener el nombre del contacto
-                try {
-                    const contactInfo = await sock.onWhatsApp(jid);
-                    if (contactInfo && contactInfo[0]?.notify) {
-                        return contactInfo[0].notify;
-                    }
-                } catch (err) {
-                    // Si falla, continuar con otras opciones
+                // Si el participante tiene un pushName guardado, usarlo
+                if (participant?.notify) {
+                    console.log(`📛 Nombre encontrado en grupo: ${participant.notify}`);
+                    return participant.notify;
                 }
-
-                // Usar el número como fallback
-                const phoneNumber = jid.replace('@s.whatsapp.net', '');
-                return phoneNumber.slice(-4); // Últimos 4 dígitos
+            } catch (groupError) {
+                console.log('No se pudo obtener metadata del grupo:', groupError.message);
             }
 
-            return null;
+            // Método 2: Verificar si está en WhatsApp y obtener notify
+            try {
+                const contactInfo = await sock.onWhatsApp(jid);
+                if (contactInfo && contactInfo[0]?.notify) {
+                    console.log(`📛 Nombre encontrado en WhatsApp: ${contactInfo[0].notify}`);
+                    return contactInfo[0].notify;
+                }
+            } catch (waError) {
+                console.log('No se pudo verificar en WhatsApp:', waError.message);
+            }
+
+            // Método 3: Intentar obtener del store de contactos del socket
+            try {
+                const contact = await sock.store?.contacts?.[jid];
+                if (contact?.name || contact?.notify) {
+                    const name = contact.name || contact.notify;
+                    console.log(`📛 Nombre encontrado en store: ${name}`);
+                    return name;
+                }
+            } catch (storeError) {
+                console.log('No se pudo obtener del store:', storeError.message);
+            }
+
+            // Fallback: usar últimos dígitos del número
+            const phoneNumber = jid.replace('@s.whatsapp.net', '');
+            const fallbackName = phoneNumber.slice(-4);
+            console.log(`📛 Usando fallback (últimos 4 dígitos): ${fallbackName}`);
+            return fallbackName;
+
         } catch (error) {
-            console.log('Error obteniendo nombre de contacto:', error.message);
-            return null;
+            console.log('❌ Error general obteniendo nombre de contacto:', error.message);
+            // Último fallback
+            const phoneNumber = jid.replace('@s.whatsapp.net', '');
+            return phoneNumber.slice(-4);
         }
     }
 }

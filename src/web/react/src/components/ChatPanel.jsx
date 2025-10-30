@@ -15,6 +15,8 @@ function ChatPanel({ contact, onUpdateContact }) {
   const [showLeaveGroupModal, setShowLeaveGroupModal] = useState(false);
   const [deletingConversation, setDeletingConversation] = useState(false);
   const [leavingGroup, setLeavingGroup] = useState(false);
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState(null);
   const messagesEndRef = useRef(null);
   const optionsMenuRef = useRef(null);
 
@@ -153,6 +155,22 @@ function ChatPanel({ contact, onUpdateContact }) {
       }}>
         <div className="flex items-center gap-4">
           <div className="relative">
+            {contact.isGroup && contact.groupPicture ? (
+              <img
+                src={contact.groupPicture}
+                alt={contact.groupName || 'Grupo'}
+                className="w-12 h-12 rounded-full object-cover"
+                style={{
+                  opacity: contact.leftGroup ? 0.6 : 1,
+                  border: '2px solid #ffffff'
+                }}
+                onError={(e) => {
+                  // Si la imagen falla, ocultar y mostrar el fallback
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+            ) : null}
             <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{
               background: contact.leftGroup
                 ? 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)'
@@ -161,7 +179,8 @@ function ChatPanel({ contact, onUpdateContact }) {
                 : isSupport
                 ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)'
                 : 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-              opacity: contact.leftGroup ? 0.6 : 1
+              opacity: contact.leftGroup ? 0.6 : 1,
+              display: contact.isGroup && contact.groupPicture ? 'none' : 'flex'
             }}>
               {contact.isGroup ? (
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
@@ -403,16 +422,25 @@ function ChatPanel({ contact, onUpdateContact }) {
                         <img
                           src={msg.mediaUrl}
                           alt={msg.mediaCaption || 'Imagen'}
-                          className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer"
-                          onClick={() => window.open(msg.mediaUrl, '_blank')}
+                          className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => {
+                            setSelectedMedia({ url: msg.mediaUrl, type: 'image', caption: msg.mediaCaption });
+                            setShowMediaModal(true);
+                          }}
                           style={{ maxWidth: '300px' }}
                         />
                       )}
                       {msg.mediaType === 'video' && (
                         <video
                           controls
-                          className="rounded-lg max-w-full max-h-64"
+                          className="rounded-lg max-w-full max-h-64 cursor-pointer"
                           style={{ maxWidth: '300px' }}
+                          onClick={(e) => {
+                            if (e.target.paused) {
+                              setSelectedMedia({ url: msg.mediaUrl, type: 'video', caption: msg.mediaCaption, mimetype: msg.mediaMimetype });
+                              setShowMediaModal(true);
+                            }
+                          }}
                         >
                           <source src={msg.mediaUrl} type={msg.mediaMimetype || 'video/mp4'} />
                           Tu navegador no soporta video
@@ -454,8 +482,8 @@ function ChatPanel({ contact, onUpdateContact }) {
                     </div>
                   )}
 
-                  {/* Mostrar texto del mensaje */}
-                  {msg.message && (isClient || isHumanOrBot ? (
+                  {/* Mostrar texto del mensaje (solo si existe) */}
+                  {msg.message && msg.message.trim() !== '' && (isClient || isHumanOrBot ? (
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -855,6 +883,82 @@ function ChatPanel({ contact, onUpdateContact }) {
               >
                 {leavingGroup ? 'Saliendo...' : 'Salir del Grupo'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de vista ampliada de medios */}
+      {showMediaModal && selectedMedia && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
+          onClick={() => {
+            setShowMediaModal(false);
+            setSelectedMedia(null);
+          }}
+        >
+          <div className="relative max-w-7xl max-h-screen p-4 w-full h-full flex flex-col items-center justify-center">
+            {/* Botón cerrar */}
+            <button
+              onClick={() => {
+                setShowMediaModal(false);
+                setSelectedMedia(null);
+              }}
+              className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all z-10"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Contenido del modal */}
+            <div className="flex flex-col items-center justify-center max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+              {selectedMedia.type === 'image' && (
+                <img
+                  src={selectedMedia.url}
+                  alt={selectedMedia.caption || 'Imagen'}
+                  className="max-w-full max-h-[85vh] object-contain rounded-lg"
+                  style={{ boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)' }}
+                />
+              )}
+              {selectedMedia.type === 'video' && (
+                <video
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-[85vh] rounded-lg"
+                  style={{ boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)' }}
+                >
+                  <source src={selectedMedia.url} type={selectedMedia.mimetype || 'video/mp4'} />
+                  Tu navegador no soporta video
+                </video>
+              )}
+
+              {/* Caption si existe */}
+              {selectedMedia.caption && (
+                <div className="mt-4 px-6 py-3 rounded-xl max-w-2xl text-center" style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(10px)'
+                }}>
+                  <p className="text-white text-sm">{selectedMedia.caption}</p>
+                </div>
+              )}
+
+              {/* Botón de descarga */}
+              <a
+                href={selectedMedia.url}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 px-6 py-2 rounded-xl text-white font-medium transition-all flex items-center gap-2"
+                style={{ background: '#FD6144' }}
+                onMouseEnter={(e) => e.target.style.background = '#FD3244'}
+                onMouseLeave={(e) => e.target.style.background = '#FD6144'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Descargar
+              </a>
             </div>
           </div>
         </div>
