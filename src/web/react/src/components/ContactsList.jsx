@@ -229,6 +229,22 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               <div className="flex items-center p-3">
                 {/* Avatar moderno */}
                 <div className="relative mr-3">
+                  {contact.isGroup && contact.groupPicture ? (
+                    <img
+                      src={contact.groupPicture}
+                      alt={contact.groupName || 'Grupo'}
+                      className="w-12 h-12 rounded-full object-cover"
+                      style={{
+                        opacity: contact.leftGroup ? 0.6 : 1,
+                        border: '2px solid #ffffff'
+                      }}
+                      onError={(e) => {
+                        // Si la imagen falla, ocultar el elemento y mostrar el fallback
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
                   <div
                     className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-semibold"
                     style={{
@@ -239,7 +255,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                         : contact.mode === 'support'
                         ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)'
                         : 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-                      opacity: contact.leftGroup ? 0.6 : 1
+                      opacity: contact.leftGroup ? 0.6 : 1,
+                      display: contact.isGroup && contact.groupPicture ? 'none' : 'flex'
                     }}
                   >
                     {contact.isGroup ? (
@@ -307,7 +324,15 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                     </div>
                   </div>
                   <p className={`text-xs truncate ${contact.leftGroup ? 'text-gray-400 italic' : getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                    {contact.leftGroup ? 'Ya no eres miembro' : contact.lastMessage?.text || 'Sin mensajes'}
+                    {contact.leftGroup ? 'Ya no eres miembro' :
+                     contact.lastMessage ?
+                       // Si es un grupo y es mensaje de cliente, mostrar nombre del usuario
+                       (contact.isGroup && contact.lastMessage.role === 'cliente' && contact.lastMessage.userName ?
+                         `${contact.lastMessage.userName}: ${contact.lastMessage.text}` :
+                         contact.lastMessage.text
+                       ) :
+                       'Sin mensajes'
+                    }
                   </p>
                 </div>
               </div>

@@ -381,8 +381,16 @@ function ChatPanel({ contact, onUpdateContact }) {
                 backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#FD6144',
                 boxShadow: isMessageFromSupport ? '0 2px 8px rgba(249, 115, 22, 0.2)' : isMessageFromHuman ? '0 2px 8px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(92, 25, 227, 0.2)'
               }}>
-                <div className={`text-[10px] font-semibold mb-1 ${isClient ? 'text-gray-500' : 'text-white/80'}`}>
-                  {isClient ? 'Cliente' :
+                {/* Mostrar nombre del usuario solo si es un grupo */}
+                {contact.isGroup && isClient && (
+                  <div className="text-xs font-semibold mb-1" style={{
+                    color: isClient ? '#059669' : 'rgba(255, 255, 255, 0.9)'
+                  }}>
+                    {msg.userName || 'Usuario'}
+                  </div>
+                )}
+                <div className={`text-[10px] font-semibold mb-1 ${contact.isGroup && isClient ? 'hidden' : ''} ${isClient ? 'text-gray-500' : 'text-white/80'}`}>
+                  {isClient ? (msg.userName || 'Cliente') :
                    msg.role === 'soporte' || msg.type === 'SOPORTE' ? `Soporte${msg.userName ? ` - ${msg.userName}` : ''}` :
                    msg.type === 'HUMAN' ? (contact.mode === 'support' ? 'Soporte' : 'Humano') :
                    msg.type === 'BOT' ? 'Bot' : 'Sistema'}

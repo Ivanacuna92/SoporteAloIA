@@ -261,7 +261,14 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         role: log.role,
                         status: log.status,
                         messageId: log.messageId,
-                        userName: log.userName
+                        userName: log.userName,
+                        // Campos de medios
+                        hasMedia: log.hasMedia || false,
+                        mediaType: log.mediaType,
+                        mediaUrl: log.mediaUrl,
+                        mediaMimetype: log.mediaMimetype,
+                        mediaFilename: log.mediaFilename,
+                        mediaCaption: log.mediaCaption
                     }));
 
                     // Obtener modo actual (solo humano o soporte, sin IA) - DEBE SER AWAIT
@@ -269,11 +276,16 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     const mode = rawMode === 'support' ? 'support' : 'human'; // Solo 2 modos posibles
                     const isHumanMode = mode === 'human';
 
+                    // Los mensajes vienen en orden ASC (más antiguo primero), entonces el último índice es el mensaje más reciente
+                    // IMPORTANTE: Guardar ANTES del reverse()
+                    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+
                     return {
                         phone: assignment.client_phone,
                         name: assignment.group_name || assignment.client_phone,
                         isGroup: assignment.is_group || false, // Ahora puede ser grupo
                         groupName: assignment.group_name,
+                        groupPicture: assignment.group_picture, // URL de la imagen del grupo
                         messages: messages.reverse(), // Orden cronológico
                         totalMessages: messages.length,
                         userMessages: messages.filter(m => m.type === 'USER' || m.role === 'cliente').length,
@@ -281,9 +293,11 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         lastActivity: assignment.last_message_at,
                         isHumanMode,
                         mode, // Siempre 'human' o 'support'
-                        lastMessage: messages.length > 0 ? {
-                            text: messages[messages.length - 1].message,
-                            timestamp: messages[messages.length - 1].timestamp
+                        lastMessage: lastMsg ? {
+                            text: lastMsg.message,
+                            timestamp: lastMsg.timestamp,
+                            userName: lastMsg.userName, // Agregar nombre del usuario
+                            role: lastMsg.role // Agregar rol para identificar si es cliente
                         } : null
                     };
                 })
