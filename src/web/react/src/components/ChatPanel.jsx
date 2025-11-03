@@ -531,9 +531,9 @@ function ChatPanel({ contact, onUpdateContact }) {
                 backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#FD6144',
                 boxShadow: isMessageFromSupport ? '0 2px 8px rgba(249, 115, 22, 0.2)' : isMessageFromHuman ? '0 2px 8px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(92, 25, 227, 0.2)'
               }}>
-                {/* Botón de menú contextual - Solo para mensajes propios (no cliente) que tengan messageId */}
-                {!isClient && (msg.messageId || msg.status) && (
-                  <div className="absolute -left-8 top-2 opacity-0 group-hover:opacity-100 transition-opacity" ref={messageMenuOpen === index ? messageMenuRef : null}>
+                {/* Botón de menú contextual - Para mensajes propios Y de clientes que tengan messageId */}
+                {(msg.messageId || msg.status) && (
+                  <div className={`absolute ${isClient ? '-right-8' : '-left-8'} top-2 opacity-0 group-hover:opacity-100 transition-opacity`} ref={messageMenuOpen === index ? messageMenuRef : null}>
                     <button
                       onClick={() => setMessageMenuOpen(messageMenuOpen === index ? null : index)}
                       className="w-7 h-7 rounded-full flex items-center justify-center transition-all"
@@ -555,7 +555,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
                       }}>
                         <div className="py-1">
-                          {msg.messageId && (
+                          {msg.messageId ? (
                             <>
                               <button
                                 onClick={() => {
@@ -564,7 +564,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                                   const messageKey = {
                                     remoteJid: `${contact.phone}@g.us`,
                                     id: msg.messageId,
-                                    fromMe: true
+                                    fromMe: !isClient
                                   };
                                   handleForwardMessage(messageKey);
                                 }}
@@ -576,28 +576,29 @@ function ChatPanel({ contact, onUpdateContact }) {
                                 </svg>
                                 <span>Reenviar</span>
                               </button>
-                              <button
-                                onClick={() => {
-                                  setMessageMenuOpen(null);
-                                  // Crear messageKey desde el messageId
-                                  const messageKey = {
-                                    remoteJid: `${contact.phone}@g.us`,
-                                    id: msg.messageId,
-                                    fromMe: true
-                                  };
-                                  handleDeleteMessage(messageKey);
-                                }}
-                                className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-red-50 transition-all"
-                                style={{ color: '#EF4444' }}
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                <span>Eliminar</span>
-                              </button>
+                              {!isClient && (
+                                <button
+                                  onClick={() => {
+                                    setMessageMenuOpen(null);
+                                    // Crear messageKey desde el messageId
+                                    const messageKey = {
+                                      remoteJid: `${contact.phone}@g.us`,
+                                      id: msg.messageId,
+                                      fromMe: true
+                                    };
+                                    handleDeleteMessage(messageKey);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-red-50 transition-all"
+                                  style={{ color: '#EF4444' }}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  <span>Eliminar</span>
+                                </button>
+                              )}
                             </>
-                          )}
-                          {!msg.messageId && (
+                          ) : (
                             <div className="px-3 py-2 text-xs text-gray-400 text-center">
                               No disponible para este mensaje
                             </div>
