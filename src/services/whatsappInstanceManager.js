@@ -262,45 +262,116 @@ class WhatsAppInstanceManager {
                                msg.message.documentMessage?.caption ||
                                '';
 
-            // Procesar menciones (reemplazar números por nombres)
+            // Procesar menciones - Capturar información de usuarios mencionados
             const mentionedJids = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
-            if (mentionedJids.length > 0 && conversation) {
+            let mentionsInfo = [];
+
+            // Detectar si es mensaje reenviado
+            const contextInfo = msg.message.extendedTextMessage?.contextInfo ||
+                               msg.message.imageMessage?.contextInfo ||
+                               msg.message.videoMessage?.contextInfo ||
+                               msg.message.documentMessage?.contextInfo || {};
+
+            const isForwarded = contextInfo.isForwarded || contextInfo.forwardingScore > 0 || false;
+            const forwardingScore = contextInfo.forwardingScore || 0;
+
+            // DEBUG: Imprimir estructura completa del mensaje para análisis
+            if (mentionedJids.length > 0 || isForwarded) {
+                console.log('\n========== DEBUG MENSAJE ==========');
+                console.log('📝 Texto visible:', conversation);
+                console.log('🔄 Es reenviado:', isForwarded);
+                console.log('🔄 Forwarding score:', forwardingScore);
+                if (mentionedJids.length > 0) {
+                    console.log('📝 MentionedJids:', mentionedJids);
+                    console.log('📝 ContextInfo completo:', JSON.stringify(contextInfo, null, 2));
+                }
+                console.log('===================================\n');
+            }
+
+            if (mentionedJids.length > 0) {
                 console.log(`📝 Procesando ${mentionedJids.length} menciones en el mensaje`);
 
                 for (const jid of mentionedJids) {
                     const phoneNumber = jid.replace('@s.whatsapp.net', '');
                     try {
-                        // Intentar obtener el nombre del contacto mencionado
+                        // Obtener el nombre del contacto mencionado
                         const mentionedName = await this.getContactName(instanceData.sock, jid, from);
 
                         if (mentionedName) {
-                            // Crear regex más flexible para reemplazar menciones
-                            // Buscar: @número_completo o @últimos_dígitos
-                            const fullNumberPattern = new RegExp(`@${phoneNumber.replace(/\+/g, '\\+')}`, 'g');
-                            const shortNumberPattern = new RegExp(`@${phoneNumber.slice(-10)}`, 'g'); // Últimos 10 dígitos
-
-                            // Intentar reemplazar con el patrón completo primero
-                            let replaced = false;
-                            if (conversation.includes(`@${phoneNumber}`)) {
-                                conversation = conversation.replace(fullNumberPattern, `@${mentionedName}`);
-                                replaced = true;
-                                console.log(`✅ Reemplazado @${phoneNumber} por @${mentionedName}`);
-                            }
-
-                            // Si no funcionó, intentar con los últimos 10 dígitos
-                            if (!replaced && conversation.includes(`@${phoneNumber.slice(-10)}`)) {
-                                conversation = conversation.replace(shortNumberPattern, `@${mentionedName}`);
-                                console.log(`✅ Reemplazado @${phoneNumber.slice(-10)} por @${mentionedName}`);
-                            }
-                        } else {
-                            console.log(`⚠️  No se pudo obtener nombre para ${phoneNumber}`);
+                            mentionsInfo.push({
+                                jid: jid,
+                                phoneNumber: phoneNumber,
+                                name: mentionedName
+                            });
+                            console.log(`✅ Mención detectada - JID: ${jid}, Teléfono: ${phoneNumber}, Nombre: ${mentionedName}`);
                         }
                     } catch (error) {
-                        console.log(`❌ Error obteniendo nombre para ${phoneNumber}:`, error.message);
+                        console.log(`❌ Error obteniendo info de mención ${phoneNumber}:`, error.message);
                     }
                 }
 
-                console.log(`📝 Mensaje final con menciones procesadas: ${conversation}`);
+                // Intentar reemplazar menciones en el texto usando múltiples estrategias
+                if (conversation && mentionsInfo.length > 0) {
+                    for (const mention of mentionsInfo) {
+                        let replaced = false;
+
+                        // Estrategia 1: Buscar con número completo
+                        const fullNumberPattern = new RegExp(`@${mention.phoneNumber.replace(/\+/g, '\\+')}`, 'g');
+                        if (conversation.includes(`@${mention.phoneNumber}`)) {
+                            conversation = conversation.replace(fullNumberPattern, `@${mention.name}`);
+                            replaced = true;
+                            console.log(`✅ Reemplazo exitoso (número completo): @${mention.phoneNumber} → @${mention.name}`);
+                        }
+
+                        // Estrategia 2: Buscar con últimos 10 dígitos
+                        if (!replaced && mention.phoneNumber.length >= 10) {
+                            const last10 = mention.phoneNumber.slice(-10);
+                            if (conversation.includes(`@${last10}`)) {
+                                const shortPattern = new RegExp(`@${last10}`, 'g');
+                                conversation = conversation.replace(shortPattern, `@${mention.name}`);
+                                replaced = true;
+                                console.log(`✅ Reemplazo exitoso (últimos 10): @${last10} → @${mention.name}`);
+                            }
+                        }
+
+                        // Estrategia 3: Buscar cualquier secuencia numérica que empiece con @ en el texto
+                        if (!replaced) {
+                            // Buscar todos los @número en el texto
+                            const mentionPattern = /@(\d+)/g;
+                            const matches = [...conversation.matchAll(mentionPattern)];
+
+                            for (const match of matches) {
+                                const foundNumber = match[1];
+                                // Verificar si el número encontrado está contenido en el número del contacto o viceversa
+                                if (mention.phoneNumber.includes(foundNumber) || foundNumber.includes(mention.phoneNumber)) {
+                                    conversation = conversation.replace(`@${foundNumber}`, `@${mention.name}`);
+                                    replaced = true;
+                                    console.log(`✅ Reemplazo exitoso (match parcial): @${foundNumber} → @${mention.name}`);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!replaced) {
+                            console.log(`⚠️  No se pudo reemplazar mención de ${mention.name} en el texto`);
+                        }
+                    }
+                }
+
+                // Si hay menciones detectadas pero no pudimos reemplazarlas en el texto,
+                // agregar la información al final del mensaje
+                if (mentionsInfo.length > 0 && conversation) {
+                    const mentionPattern = /@(\d+)/g;
+                    const unresolvedMentions = [...conversation.matchAll(mentionPattern)];
+
+                    if (unresolvedMentions.length > 0) {
+                        const mentionsList = mentionsInfo.map(m => `@${m.name}`).join(', ');
+                        conversation += `\n\n[Menciones: ${mentionsList}]`;
+                        console.log(`ℹ️  Agregada información de menciones al final del mensaje`);
+                    }
+                }
+
+                console.log(`📝 Mensaje final procesado: "${conversation}"`);
             }
 
             // Detectar si el mensaje tiene medios
@@ -357,7 +428,7 @@ class WhatsAppInstanceManager {
             const messageText = conversation || '';
 
             // Log del mensaje con información del grupo y medios
-            await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, null, mediaInfo);
+            await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, null, mediaInfo, isForwarded);
 
             // Asignar grupo a este usuario de soporte si no está asignado
             await this.assignClientToUser(groupId, supportUserId, true, groupName, groupPicture);
@@ -717,6 +788,136 @@ class WhatsAppInstanceManager {
         const result = await instanceData.sock.sendMessage(chatId, { text: message });
 
         console.log('✅ [INSTANCE-MANAGER] Mensaje enviado exitosamente');
+        return result;
+    }
+
+    // Enviar imagen con caption
+    async sendImage(supportUserId, to, imageBuffer, caption = '') {
+        console.log('📤 [INSTANCE-MANAGER] sendImage - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('📤 [INSTANCE-MANAGER] Enviando imagen...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            image: imageBuffer,
+            caption: caption
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Imagen enviada exitosamente');
+        return result;
+    }
+
+    // Enviar documento
+    async sendDocument(supportUserId, to, documentBuffer, filename, mimetype, caption = '') {
+        console.log('📤 [INSTANCE-MANAGER] sendDocument - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('📤 [INSTANCE-MANAGER] Enviando documento...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            document: documentBuffer,
+            fileName: filename,
+            mimetype: mimetype,
+            caption: caption
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Documento enviado exitosamente');
+        return result;
+    }
+
+    // Enviar audio
+    async sendAudio(supportUserId, to, audioBuffer, ptt = false) {
+        console.log('📤 [INSTANCE-MANAGER] sendAudio - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('📤 [INSTANCE-MANAGER] Enviando audio...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            audio: audioBuffer,
+            mimetype: 'audio/mp4',
+            ptt: ptt // Push-to-talk (nota de voz)
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Audio enviado exitosamente');
+        return result;
+    }
+
+    // Reenviar mensaje
+    async forwardMessage(supportUserId, to, messageKey) {
+        console.log('📤 [INSTANCE-MANAGER] forwardMessage - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('📤 [INSTANCE-MANAGER] Reenviando mensaje...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            forward: messageKey
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Mensaje reenviado exitosamente');
+        return result;
+    }
+
+    // Eliminar mensaje
+    async deleteMessage(supportUserId, messageKey) {
+        console.log('🗑️ [INSTANCE-MANAGER] deleteMessage - userId:', supportUserId);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        console.log('🗑️ [INSTANCE-MANAGER] Eliminando mensaje...');
+
+        const result = await instanceData.sock.sendMessage(messageKey.remoteJid, {
+            delete: messageKey
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Mensaje eliminado exitosamente');
         return result;
     }
 

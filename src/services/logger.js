@@ -6,7 +6,7 @@ class Logger {
         this.isProcessingQueue = false;
     }
 
-    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null) {
+    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null, isForwarded = false) {
         const timestamp = new Date();
         const logEntry = {
             timestamp: timestamp.toISOString(),
@@ -25,13 +25,16 @@ class Logger {
             media_url: mediaInfo?.media_url || null,
             media_mimetype: mediaInfo?.media_mimetype || null,
             media_filename: mediaInfo?.media_filename || null,
-            media_caption: mediaInfo?.media_caption || null
+            media_caption: mediaInfo?.media_caption || null,
+            // Información de mensaje reenviado
+            is_forwarded: isForwarded || false
         };
 
         // Solo guardar en BD y mostrar en consola
         const insertedId = await this.saveToDB(logEntry);
         const mediaIndicator = mediaInfo?.has_media ? ` 📎[${mediaInfo.media_type}]` : '';
-        this.printToConsole(logEntry.timestamp, role, message + mediaIndicator, userId, isGroup);
+        const forwardIndicator = isForwarded ? ' 🔄[reenviado]' : '';
+        this.printToConsole(logEntry.timestamp, role, message + mediaIndicator + forwardIndicator, userId, isGroup);
 
         return insertedId;
     }
@@ -61,7 +64,9 @@ class Logger {
                 media_url: logEntry.media_url || null,
                 media_mimetype: logEntry.media_mimetype || null,
                 media_filename: logEntry.media_filename || null,
-                media_caption: logEntry.media_caption || null
+                media_caption: logEntry.media_caption || null,
+                // Campo de mensaje reenviado
+                is_forwarded: logEntry.is_forwarded || false
             });
             return result.insertId;
         } catch (error) {
@@ -178,7 +183,9 @@ class Logger {
                     mediaUrl: log.media_url,
                     mediaMimetype: log.media_mimetype,
                     mediaFilename: log.media_filename,
-                    mediaCaption: log.media_caption
+                    mediaCaption: log.media_caption,
+                    // Campo de mensaje reenviado
+                    isForwarded: log.is_forwarded || false
                 };
             });
         } catch (error) {
@@ -300,7 +307,9 @@ class Logger {
                 mediaUrl: log.media_url,
                 mediaMimetype: log.media_mimetype,
                 mediaFilename: log.media_filename,
-                mediaCaption: log.media_caption
+                mediaCaption: log.media_caption,
+                // Campo de mensaje reenviado
+                isForwarded: log.is_forwarded || false
             }));
         } catch (error) {
             console.error('Error obteniendo logs por teléfono de cliente:', error);

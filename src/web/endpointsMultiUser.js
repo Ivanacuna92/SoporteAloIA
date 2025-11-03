@@ -3,6 +3,12 @@
 
 const authService = require('../services/authService');
 const database = require('../services/database');
+const multer = require('multer');
+const fs = require('fs').promises;
+const path = require('path');
+
+// Configurar multer para almacenamiento en memoria
+const upload = multer({ storage: multer.memoryStorage() });
 
 module.exports = function(app, requireAuth, requireAdmin) {
 
@@ -353,6 +359,196 @@ module.exports = function(app, requireAuth, requireAdmin) {
             console.error('❌ [SEND-MESSAGE] Stack:', error.stack);
             res.status(500).json({
                 error: 'Error enviando mensaje',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar imagen
+    app.post('/api/my-instance/send-image', requireAuth, upload.single('image'), async (req, res) => {
+        try {
+            const { phone, caption } = req.body;
+
+            if (!phone || !req.file) {
+                return res.status(400).json({
+                    error: 'Phone e imagen son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendImage(req.user.id, chatId, req.file.buffer, caption || '');
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            const mediaInfo = {
+                has_media: true,
+                media_type: 'image',
+                media_url: null, // No se guarda en este caso
+                media_mimetype: req.file.mimetype,
+                media_filename: req.file.originalname,
+                media_caption: caption || ''
+            };
+            await logger.log('soporte', caption || '[Imagen]', phone, req.user.name, true, req.user.id, null, mediaInfo);
+
+            res.json({
+                success: true,
+                message: 'Imagen enviada correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando imagen:', error);
+            res.status(500).json({
+                error: 'Error enviando imagen',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar documento
+    app.post('/api/my-instance/send-document', requireAuth, upload.single('document'), async (req, res) => {
+        try {
+            const { phone, caption } = req.body;
+
+            if (!phone || !req.file) {
+                return res.status(400).json({
+                    error: 'Phone y documento son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendDocument(
+                req.user.id,
+                chatId,
+                req.file.buffer,
+                req.file.originalname,
+                req.file.mimetype,
+                caption || ''
+            );
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            const mediaInfo = {
+                has_media: true,
+                media_type: 'document',
+                media_url: null,
+                media_mimetype: req.file.mimetype,
+                media_filename: req.file.originalname,
+                media_caption: caption || ''
+            };
+            await logger.log('soporte', caption || `[Documento: ${req.file.originalname}]`, phone, req.user.name, true, req.user.id, null, mediaInfo);
+
+            res.json({
+                success: true,
+                message: 'Documento enviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando documento:', error);
+            res.status(500).json({
+                error: 'Error enviando documento',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar audio
+    app.post('/api/my-instance/send-audio', requireAuth, upload.single('audio'), async (req, res) => {
+        try {
+            const { phone, ptt } = req.body;
+
+            if (!phone || !req.file) {
+                return res.status(400).json({
+                    error: 'Phone y audio son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendAudio(req.user.id, chatId, req.file.buffer, ptt === 'true');
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            const mediaInfo = {
+                has_media: true,
+                media_type: 'audio',
+                media_url: null,
+                media_mimetype: req.file.mimetype,
+                media_filename: req.file.originalname,
+                media_caption: null
+            };
+            await logger.log('soporte', '[Audio]', phone, req.user.name, true, req.user.id, null, mediaInfo);
+
+            res.json({
+                success: true,
+                message: 'Audio enviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando audio:', error);
+            res.status(500).json({
+                error: 'Error enviando audio',
+                details: error.message
+            });
+        }
+    });
+
+    // Reenviar mensaje
+    app.post('/api/my-instance/forward-message', requireAuth, async (req, res) => {
+        try {
+            const { phone, messageKey } = req.body;
+
+            if (!phone || !messageKey) {
+                return res.status(400).json({
+                    error: 'Phone y messageKey son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.forwardMessage(req.user.id, chatId, messageKey);
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            await logger.log('soporte', '[Mensaje reenviado]', phone, req.user.name, true, req.user.id);
+
+            res.json({
+                success: true,
+                message: 'Mensaje reenviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error reenviando mensaje:', error);
+            res.status(500).json({
+                error: 'Error reenviando mensaje',
+                details: error.message
+            });
+        }
+    });
+
+    // Eliminar mensaje
+    app.post('/api/my-instance/delete-message', requireAuth, async (req, res) => {
+        try {
+            const { messageKey } = req.body;
+
+            if (!messageKey) {
+                return res.status(400).json({
+                    error: 'messageKey es requerido'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            await instanceManager.deleteMessage(req.user.id, messageKey);
+
+            res.json({
+                success: true,
+                message: 'Mensaje eliminado correctamente'
+            });
+        } catch (error) {
+            console.error('Error eliminando mensaje:', error);
+            res.status(500).json({
+                error: 'Error eliminando mensaje',
                 details: error.message
             });
         }

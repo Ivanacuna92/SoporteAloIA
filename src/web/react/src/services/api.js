@@ -549,3 +549,96 @@ export async function sendMyMessage(phone, message) {
 
   return response.json();
 }
+
+// Enviar imagen desde mi instancia
+export async function sendMyImage(phone, imageFile, caption = '') {
+  const formData = new FormData();
+  formData.append('phone', phone);
+  formData.append('image', imageFile);
+  if (caption) formData.append('caption', caption);
+
+  const response = await fetch(`${API_BASE}/my-instance/send-image`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando imagen');
+  }
+
+  return response.json();
+}
+
+// Enviar documento desde mi instancia
+export async function sendMyDocument(phone, documentFile, caption = '') {
+  const formData = new FormData();
+  formData.append('phone', phone);
+  formData.append('document', documentFile);
+  if (caption) formData.append('caption', caption);
+
+  const response = await fetch(`${API_BASE}/my-instance/send-document`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando documento');
+  }
+
+  return response.json();
+}
+
+// Enviar audio desde mi instancia
+export async function sendMyAudio(phone, audioFile, ptt = false) {
+  const formData = new FormData();
+  formData.append('phone', phone);
+  formData.append('audio', audioFile);
+  formData.append('ptt', ptt.toString());
+
+  const response = await fetch(`${API_BASE}/my-instance/send-audio`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando audio');
+  }
+
+  return response.json();
+}
+
+// Reenviar mensaje desde mi instancia
+export async function forwardMyMessage(phone, messageKey) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/forward-message`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, messageKey })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error reenviando mensaje');
+  }
+
+  return response.json();
+}
+
+// Eliminar mensaje desde mi instancia
+export async function deleteMyMessage(messageKey) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/delete-message`, {
+    method: 'POST',
+    body: JSON.stringify({ messageKey })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error eliminando mensaje');
+  }
+
+  return response.json();
+}

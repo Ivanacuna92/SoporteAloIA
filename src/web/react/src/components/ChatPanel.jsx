@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, forwardMyMessage, deleteMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -17,8 +17,22 @@ function ChatPanel({ contact, onUpdateContact }) {
   const [leavingGroup, setLeavingGroup] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [sendingMedia, setSendingMedia] = useState(false);
+  const [messageMenuOpen, setMessageMenuOpen] = useState(null); // ID del mensaje con menú abierto
+  const [showCaptionModal, setShowCaptionModal] = useState(false);
+  const [captionData, setCaptionData] = useState({ file: null, type: null, caption: '' });
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardData, setForwardData] = useState({ messageKey: null, targetPhone: '' });
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const messagesEndRef = useRef(null);
   const optionsMenuRef = useRef(null);
+  const attachMenuRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const messageMenuRef = useRef(null);
 
   useEffect(() => {
     // Scroll automático e instantáneo al cambiar de contacto
@@ -35,6 +49,12 @@ function ChatPanel({ contact, onUpdateContact }) {
     function handleClickOutside(event) {
       if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target)) {
         setShowOptionsMenu(false);
+      }
+      if (attachMenuRef.current && !attachMenuRef.current.contains(event.target)) {
+        setShowAttachMenu(false);
+      }
+      if (messageMenuRef.current && !messageMenuRef.current.contains(event.target)) {
+        setMessageMenuOpen(null);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -78,24 +98,134 @@ function ChatPanel({ contact, onUpdateContact }) {
     try {
       await sendMyMessage(contact.phone, message); // Sin parámetro isGroup
       setMessage('');
-      
+
       const newMessage = {
         type: 'HUMAN',
         message: message,
         timestamp: new Date().toISOString()
       };
-      
+
       onUpdateContact({
         ...contact,
         messages: [...(contact.messages || []), newMessage]
       });
     } catch (error) {
-      alert('Error enviando mensaje: ' + error.message);
+      setErrorMessage('Error enviando mensaje: ' + error.message);
+      setShowErrorModal(true);
     } finally {
       setSending(false);
     }
   };
 
+  const handleFileSelect = async (file, type) => {
+    if (!file || !contact || sendingMedia) return;
+
+    setShowAttachMenu(false);
+
+    // Si es imagen o documento, mostrar modal para caption
+    if (type === 'image' || type === 'document') {
+      setCaptionData({ file, type, caption: '' });
+      setShowCaptionModal(true);
+    } else {
+      // Para audio, enviar directamente
+      await sendMediaFile(file, type, '');
+    }
+  };
+
+  const sendMediaFile = async (file, type, caption) => {
+    setSendingMedia(true);
+
+    try {
+      if (type === 'image') {
+        await sendMyImage(contact.phone, file, caption);
+      } else if (type === 'document') {
+        await sendMyDocument(contact.phone, file, caption);
+      } else if (type === 'audio') {
+        await sendMyAudio(contact.phone, file, false);
+      }
+
+      // Agregar mensaje visual al chat
+      const newMessage = {
+        type: 'HUMAN',
+        message: caption || `[${type === 'image' ? 'Imagen' : type === 'document' ? 'Documento' : 'Audio'}]`,
+        timestamp: new Date().toISOString(),
+        hasMedia: true,
+        mediaType: type
+      };
+
+      onUpdateContact({
+        ...contact,
+        messages: [...(contact.messages || []), newMessage]
+      });
+
+      setSuccessMessage(`${type === 'image' ? 'Imagen' : type === 'document' ? 'Documento' : 'Audio'} enviado exitosamente`);
+      setShowSuccessModal(true);
+    } catch (error) {
+      setErrorMessage(`Error enviando ${type}: ${error.message}`);
+      setShowErrorModal(true);
+    } finally {
+      setSendingMedia(false);
+    }
+  };
+
+  const handleAttachClick = (type) => {
+    setShowAttachMenu(false);
+    const input = document.createElement('input');
+    input.type = 'file';
+
+    if (type === 'image') {
+      input.accept = 'image/*';
+    } else if (type === 'document') {
+      input.accept = '*/*';
+    } else if (type === 'audio') {
+      input.accept = 'audio/*';
+    }
+
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        handleFileSelect(file, type);
+      }
+    };
+    input.click();
+  };
+
+  const handleDeleteMessage = async (messageKey) => {
+    try {
+      await deleteMyMessage(messageKey);
+      setSuccessMessage('Mensaje eliminado exitosamente');
+      setShowSuccessModal(true);
+      // Recargar para ver los cambios
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error) {
+      setErrorMessage('Error eliminando mensaje: ' + error.message);
+      setShowErrorModal(true);
+    }
+  };
+
+  const handleForwardMessage = (messageKey) => {
+    setForwardData({ messageKey, targetPhone: '' });
+    setShowForwardModal(true);
+  };
+
+  const confirmForwardMessage = async () => {
+    if (!forwardData.targetPhone.trim()) {
+      setErrorMessage('Debes ingresar un número de teléfono');
+      setShowErrorModal(true);
+      return;
+    }
+
+    try {
+      await forwardMyMessage(forwardData.targetPhone, forwardData.messageKey);
+      setShowForwardModal(false);
+      setSuccessMessage('Mensaje reenviado exitosamente');
+      setShowSuccessModal(true);
+    } catch (error) {
+      setShowForwardModal(false);
+      setErrorMessage('Error reenviando mensaje: ' + error.message);
+      setShowErrorModal(true);
+    }
+  };
 
   const handleEndConversation = async () => {
     setEndingConversation(true);
@@ -120,7 +250,8 @@ function ChatPanel({ contact, onUpdateContact }) {
       setEndingConversation(false);
     } catch (error) {
       setEndingConversation(false);
-      alert('Error finalizando conversación: ' + error.message);
+      setErrorMessage('Error finalizando conversación: ' + error.message);
+      setShowErrorModal(true);
     }
   };
 
@@ -386,7 +517,7 @@ function ChatPanel({ contact, onUpdateContact }) {
           return (
             <div
               key={index}
-              className={`flex ${isClient ? 'justify-start' : 'justify-end'}`}
+              className={`flex ${isClient ? 'justify-start' : 'justify-end'} group`}
             >
               <div className={`max-w-xs lg:max-w-md px-3 py-2 relative ${
                 isClient ? 'bg-white text-gray-900' : 'text-white'
@@ -400,6 +531,92 @@ function ChatPanel({ contact, onUpdateContact }) {
                 backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#FD6144',
                 boxShadow: isMessageFromSupport ? '0 2px 8px rgba(249, 115, 22, 0.2)' : isMessageFromHuman ? '0 2px 8px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(92, 25, 227, 0.2)'
               }}>
+                {/* Botón de menú contextual - Solo para mensajes propios (no cliente) que tengan messageId */}
+                {!isClient && (msg.messageId || msg.status) && (
+                  <div className="absolute -left-8 top-2 opacity-0 group-hover:opacity-100 transition-opacity" ref={messageMenuOpen === index ? messageMenuRef : null}>
+                    <button
+                      onClick={() => setMessageMenuOpen(messageMenuOpen === index ? null : index)}
+                      className="w-7 h-7 rounded-full flex items-center justify-center transition-all"
+                      style={{
+                        background: messageMenuOpen === index ? '#FD6144' : '#F3F4F6',
+                        color: messageMenuOpen === index ? 'white' : '#6B7280'
+                      }}
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+                      </svg>
+                    </button>
+
+                    {/* Menú desplegable */}
+                    {messageMenuOpen === index && (
+                      <div className="absolute left-0 top-8 w-40 rounded-lg shadow-lg z-50" style={{
+                        background: 'white',
+                        border: '1px solid #E8EBED',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                      }}>
+                        <div className="py-1">
+                          {msg.messageId && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setMessageMenuOpen(null);
+                                  // Crear messageKey desde el messageId
+                                  const messageKey = {
+                                    remoteJid: `${contact.phone}@g.us`,
+                                    id: msg.messageId,
+                                    fromMe: true
+                                  };
+                                  handleForwardMessage(messageKey);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-gray-100 transition-all"
+                                style={{ color: '#6B7280' }}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                                <span>Reenviar</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setMessageMenuOpen(null);
+                                  // Crear messageKey desde el messageId
+                                  const messageKey = {
+                                    remoteJid: `${contact.phone}@g.us`,
+                                    id: msg.messageId,
+                                    fromMe: true
+                                  };
+                                  handleDeleteMessage(messageKey);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-red-50 transition-all"
+                                style={{ color: '#EF4444' }}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                <span>Eliminar</span>
+                              </button>
+                            </>
+                          )}
+                          {!msg.messageId && (
+                            <div className="px-3 py-2 text-xs text-gray-400 text-center">
+                              No disponible para este mensaje
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Indicador de mensaje reenviado */}
+                {msg.isForwarded && (
+                  <div className={`text-[10px] font-medium mb-1 flex items-center gap-1 ${isClient ? 'text-gray-500' : 'text-white/70'}`}>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                    <span>Reenviado</span>
+                  </div>
+                )}
+
                 {/* Mostrar nombre del usuario solo si es un grupo */}
                 {contact.isGroup && isClient && (
                   <div className="text-xs font-semibold mb-1" style={{
@@ -557,17 +774,106 @@ function ChatPanel({ contact, onUpdateContact }) {
           </div>
         </div>
       ) : (
-        <div className="bg-white px-6 py-4 flex gap-3" style={{
+        <div className="bg-white px-6 py-4 flex gap-3 relative" style={{
           borderTop: '1px solid #E8EBED',
           boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
         }}>
+          {/* Botón de adjuntar archivos */}
+          <div className="relative" ref={attachMenuRef}>
+            <button
+              onClick={() => setShowAttachMenu(!showAttachMenu)}
+              disabled={sendingMedia}
+              className="w-12 h-12 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+              style={{
+                background: showAttachMenu ? '#FD6144' : '#F3F4F6',
+                color: showAttachMenu ? 'white' : '#6B7280'
+              }}
+              onMouseEnter={(e) => {
+                if (!sendingMedia && !showAttachMenu) {
+                  e.target.style.background = '#E5E7EB';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!sendingMedia && !showAttachMenu) {
+                  e.target.style.background = '#F3F4F6';
+                }
+              }}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+
+            {/* Menú de opciones de adjuntar */}
+            {showAttachMenu && (
+              <div className="absolute bottom-16 left-0 w-48 rounded-xl shadow-lg z-50" style={{
+                background: 'white',
+                border: '1px solid #E8EBED',
+                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
+              }}>
+                <div className="py-2">
+                  <button
+                    onClick={() => handleAttachClick('image')}
+                    className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = '#F3F4F6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Enviar imagen</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleAttachClick('document')}
+                    className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = '#F3F4F6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <span>Enviar documento</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleAttachClick('audio')}
+                    className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = '#F3F4F6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                    <span>Enviar audio</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <input
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Escribe un mensaje..."
-            disabled={sending}
+            disabled={sending || sendingMedia}
             className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
             style={{
               background: '#F3F4F6',
@@ -588,7 +894,7 @@ function ChatPanel({ contact, onUpdateContact }) {
           />
           <button
             onClick={handleSend}
-            disabled={sending || !message.trim()}
+            disabled={sending || sendingMedia || !message.trim()}
             className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: '#FD6144'
@@ -604,7 +910,7 @@ function ChatPanel({ contact, onUpdateContact }) {
               }
             }}
           >
-            {sending ? '...' : 'Enviar'}
+            {sending ? '...' : sendingMedia ? 'Enviando...' : 'Enviar'}
           </button>
         </div>
       )}
@@ -678,7 +984,8 @@ function ChatPanel({ contact, onUpdateContact }) {
                       messages: [...(contact.messages || []), newMessage]
                     });
                   } catch (error) {
-                    alert('Error al tomar control: ' + (error.message || 'Error desconocido'));
+                    setErrorMessage('Error al tomar control: ' + (error.message || 'Error desconocido'));
+                    setShowErrorModal(true);
                   }
                 }}
                 className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
@@ -797,7 +1104,8 @@ function ChatPanel({ contact, onUpdateContact }) {
                     window.location.reload();
                   } catch (error) {
                     setDeletingConversation(false);
-                    alert('Error eliminando conversación: ' + error.message);
+                    setErrorMessage('Error eliminando conversación: ' + error.message);
+                    setShowErrorModal(true);
                   }
                 }}
                 disabled={deletingConversation}
@@ -872,7 +1180,8 @@ function ChatPanel({ contact, onUpdateContact }) {
                     });
                   } catch (error) {
                     setLeavingGroup(false);
-                    alert('Error saliendo del grupo: ' + error.message);
+                    setErrorMessage('Error saliendo del grupo: ' + error.message);
+                    setShowErrorModal(true);
                   }
                 }}
                 disabled={leavingGroup}
@@ -960,6 +1269,180 @@ function ChatPanel({ contact, onUpdateContact }) {
                 Descargar
               </a>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para ingresar caption */}
+      {showCaptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
+          }}>
+            <h3 className="text-xl font-semibold mb-3 text-gray-800">
+              Agregar caption
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Ingresa un texto descriptivo para {captionData.type === 'image' ? 'la imagen' : 'el documento'} (opcional)
+            </p>
+            <input
+              type="text"
+              value={captionData.caption}
+              onChange={(e) => setCaptionData({...captionData, caption: e.target.value})}
+              placeholder="Escribe el caption aquí..."
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#FD6144] text-sm mb-6"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCaptionModal(false);
+                  setCaptionData({ file: null, type: null, caption: '' });
+                }}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all"
+                style={{
+                  background: '#F3F4F6',
+                  color: '#6B7280'
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#E5E7EB'}
+                onMouseLeave={(e) => e.target.style.background = '#F3F4F6'}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowCaptionModal(false);
+                  sendMediaFile(captionData.file, captionData.type, captionData.caption);
+                  setCaptionData({ file: null, type: null, caption: '' });
+                }}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
+                style={{ background: '#FD6144' }}
+                onMouseEnter={(e) => e.target.style.background = '#FD3244'}
+                onMouseLeave={(e) => e.target.style.background = '#FD6144'}
+              >
+                Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para reenviar mensaje */}
+      {showForwardModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
+          }}>
+            <h3 className="text-xl font-semibold mb-3 text-gray-800">
+              Reenviar mensaje
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Ingresa el número de teléfono del grupo destino (sin @g.us)
+            </p>
+            <input
+              type="text"
+              value={forwardData.targetPhone}
+              onChange={(e) => setForwardData({...forwardData, targetPhone: e.target.value})}
+              placeholder="Ej: 1234567890"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#FD6144] text-sm mb-6"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowForwardModal(false);
+                  setForwardData({ messageKey: null, targetPhone: '' });
+                }}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all"
+                style={{
+                  background: '#F3F4F6',
+                  color: '#6B7280'
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#E5E7EB'}
+                onMouseLeave={(e) => e.target.style.background = '#F3F4F6'}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmForwardMessage}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
+                style={{ background: '#FD6144' }}
+                onMouseEnter={(e) => e.target.style.background = '#FD3244'}
+                onMouseLeave={(e) => e.target.style.background = '#FD6144'}
+              >
+                Reenviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de error */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
+          }}>
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
+                background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                boxShadow: '0 8px 20px rgba(239, 68, 68, 0.3)'
+              }}>
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-2 text-center text-gray-800">
+              Error
+            </h3>
+            <p className="text-sm text-gray-600 mb-6 text-center">
+              {errorMessage}
+            </p>
+            <button
+              onClick={() => setShowErrorModal(false)}
+              className="w-full px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
+              style={{ background: '#EF4444' }}
+              onMouseEnter={(e) => e.target.style.background = '#DC2626'}
+              onMouseLeave={(e) => e.target.style.background = '#EF4444'}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de éxito */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
+          }}>
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)'
+              }}>
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-2 text-center text-gray-800">
+              Éxito
+            </h3>
+            <p className="text-sm text-gray-600 mb-6 text-center">
+              {successMessage}
+            </p>
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="w-full px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
+              style={{ background: '#10B981' }}
+              onMouseEnter={(e) => e.target.style.background = '#059669'}
+              onMouseLeave={(e) => e.target.style.background = '#10B981'}
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}
