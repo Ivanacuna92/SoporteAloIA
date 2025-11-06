@@ -107,17 +107,32 @@ function ChatPanel({ contact, onUpdateContact }) {
     if (contact?.isGroup && contact?.messages) {
       const participants = new Map();
 
-      contact.messages.forEach(msg => {
+      console.log('🔍 [MENCIONES] Extrayendo participantes del grupo...');
+      console.log('🔍 [MENCIONES] Total mensajes:', contact.messages.length);
+
+      contact.messages.forEach((msg, index) => {
         // Solo mensajes de usuarios (no del bot/soporte)
-        if ((msg.type === 'USER' || msg.type === 'CLIENTE') && msg.userName && msg.participant) {
-          participants.set(msg.participant, {
-            jid: msg.participant,
+        if ((msg.type === 'USER' || msg.type === 'CLIENTE') && msg.userName) {
+          console.log(`🔍 [MENCIONES] Mensaje ${index}:`, {
+            type: msg.type,
+            userName: msg.userName,
+            participant: msg.participant,
+            hasParticipant: !!msg.participant
+          });
+
+          // Si tiene participant, usarlo. Si no, generar uno basado en el número
+          const participantJid = msg.participant || `${msg.userName}@s.whatsapp.net`;
+
+          participants.set(participantJid, {
+            jid: participantJid,
             name: msg.userName
           });
         }
       });
 
-      setGroupParticipants(Array.from(participants.values()));
+      const participantsList = Array.from(participants.values());
+      console.log('✅ [MENCIONES] Participantes extraídos:', participantsList.length, participantsList);
+      setGroupParticipants(participantsList);
     }
   }, [contact?.messages, contact?.isGroup]);
 
@@ -274,13 +289,16 @@ function ChatPanel({ contact, onUpdateContact }) {
   };
 
   const handleDeleteMessage = async (messageKey) => {
+    console.log('🗑️ [DELETE] Intentando eliminar mensaje:', messageKey);
     try {
       await deleteMyMessage(messageKey);
+      console.log('✅ [DELETE] Mensaje eliminado exitosamente');
       setSuccessMessage('Mensaje eliminado exitosamente');
       setShowSuccessModal(true);
       // Recargar para ver los cambios
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
+      console.error('❌ [DELETE] Error eliminando mensaje:', error);
       setErrorMessage('Error eliminando mensaje: ' + error.message);
       setShowErrorModal(true);
     }
@@ -544,21 +562,35 @@ function ChatPanel({ contact, onUpdateContact }) {
     }, 2000));
 
     // Detectar @ para menciones (solo en grupos)
+    console.log('📝 [MENCIONES] Texto:', newMessage);
+    console.log('📝 [MENCIONES] Es grupo:', contact?.isGroup);
+    console.log('📝 [MENCIONES] Participantes:', groupParticipants.length);
+
     if (contact?.isGroup && groupParticipants.length > 0) {
       const cursorPos = e.target.selectionStart;
       const textBeforeCursor = newMessage.substring(0, cursorPos);
       const lastAtIndex = textBeforeCursor.lastIndexOf('@');
 
+      console.log('📝 [MENCIONES] Posición @:', lastAtIndex);
+
       if (lastAtIndex !== -1) {
         const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
+        console.log('📝 [MENCIONES] Texto después de @:', textAfterAt);
+
         // Si no hay espacio después del @, mostrar menú
         if (!textAfterAt.includes(' ')) {
+          console.log('✅ [MENCIONES] Mostrando menú!');
           setMentionSearch(textAfterAt.toLowerCase());
           setMentionPosition(lastAtIndex);
           setShowMentionMenu(true);
           return;
         }
       }
+    } else {
+      console.log('❌ [MENCIONES] No se puede mostrar menú:', {
+        isGroup: contact?.isGroup,
+        participantCount: groupParticipants.length
+      });
     }
 
     setShowMentionMenu(false);
