@@ -757,7 +757,7 @@ class WhatsAppInstanceManager {
     }
 
     // Enviar mensaje desde una instancia específica
-    async sendMessage(supportUserId, to, message) {
+    async sendMessage(supportUserId, to, message, options = {}) {
         console.log('📤 [INSTANCE-MANAGER] sendMessage - userId:', supportUserId, 'to:', to);
 
         const instanceData = this.instances.get(supportUserId);
@@ -785,10 +785,211 @@ class WhatsAppInstanceManager {
         console.log('📤 [INSTANCE-MANAGER] ChatId final:', chatId);
         console.log('📤 [INSTANCE-MANAGER] Enviando mensaje...');
 
-        const result = await instanceData.sock.sendMessage(chatId, { text: message });
+        // Construir el objeto del mensaje
+        const messagePayload = { text: message };
+
+        // Agregar quoted message si se especifica (responder a un mensaje)
+        if (options.quotedMessageId && options.quotedRemoteJid) {
+            messagePayload.quoted = {
+                key: {
+                    remoteJid: options.quotedRemoteJid,
+                    id: options.quotedMessageId,
+                    participant: options.quotedParticipant || undefined
+                }
+            };
+            console.log('💬 Respondiendo a mensaje:', options.quotedMessageId);
+        }
+
+        // Agregar menciones si se especifican
+        if (options.mentions && options.mentions.length > 0) {
+            messagePayload.mentions = options.mentions;
+            console.log('📝 Mencionando a:', options.mentions.length, 'usuarios');
+        }
+
+        const result = await instanceData.sock.sendMessage(chatId, messagePayload);
 
         console.log('✅ [INSTANCE-MANAGER] Mensaje enviado exitosamente');
         return result;
+    }
+
+    // Reaccionar a un mensaje
+    async reactToMessage(supportUserId, messageKey, emoji) {
+        console.log('😀 [INSTANCE-MANAGER] reactToMessage - userId:', supportUserId);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        console.log('😀 [INSTANCE-MANAGER] Enviando reacción:', emoji);
+
+        const result = await instanceData.sock.sendMessage(messageKey.remoteJid, {
+            react: {
+                text: emoji, // El emoji como string (ej: '👍', '❤️', '')
+                key: messageKey
+            }
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Reacción enviada exitosamente');
+        return result;
+    }
+
+    // Editar mensaje (nota: solo funciona para mensajes enviados recientemente)
+    async editMessage(supportUserId, messageKey, newText) {
+        console.log('✏️ [INSTANCE-MANAGER] editMessage - userId:', supportUserId);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        console.log('✏️ [INSTANCE-MANAGER] Editando mensaje...');
+
+        const result = await instanceData.sock.sendMessage(messageKey.remoteJid, {
+            text: newText,
+            edit: messageKey
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Mensaje editado exitosamente');
+        return result;
+    }
+
+    // Enviar ubicación
+    async sendLocation(supportUserId, to, latitude, longitude, name = '', address = '') {
+        console.log('📍 [INSTANCE-MANAGER] sendLocation - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('📍 [INSTANCE-MANAGER] Enviando ubicación...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            location: {
+                degreesLatitude: latitude,
+                degreesLongitude: longitude,
+                name: name,
+                address: address
+            }
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Ubicación enviada exitosamente');
+        return result;
+    }
+
+    // Enviar contacto
+    async sendContact(supportUserId, to, contactName, contactNumber) {
+        console.log('👤 [INSTANCE-MANAGER] sendContact - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('👤 [INSTANCE-MANAGER] Enviando contacto...');
+
+        const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${contactName}\nTEL;type=CELL;type=VOICE;waid=${contactNumber}:${contactNumber}\nEND:VCARD`;
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            contacts: {
+                displayName: contactName,
+                contacts: [{ vcard }]
+            }
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Contacto enviado exitosamente');
+        return result;
+    }
+
+    // Enviar sticker
+    async sendSticker(supportUserId, to, stickerBuffer) {
+        console.log('🎨 [INSTANCE-MANAGER] sendSticker - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('🎨 [INSTANCE-MANAGER] Enviando sticker...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            sticker: stickerBuffer
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Sticker enviado exitosamente');
+        return result;
+    }
+
+    // Marcar chat como leído
+    async markAsRead(supportUserId, messageKey) {
+        console.log('✅ [INSTANCE-MANAGER] markAsRead - userId:', supportUserId);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        console.log('✅ [INSTANCE-MANAGER] Marcando como leído...');
+
+        await instanceData.sock.readMessages([messageKey]);
+
+        console.log('✅ [INSTANCE-MANAGER] Marcado como leído exitosamente');
+    }
+
+    // Cambiar estado de "escribiendo..."
+    async sendPresenceUpdate(supportUserId, to, state = 'composing') {
+        console.log('💬 [INSTANCE-MANAGER] sendPresenceUpdate - userId:', supportUserId, 'state:', state);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+
+        // Estados posibles: 'composing' (escribiendo), 'recording' (grabando), 'paused' (pausado)
+        await instanceData.sock.sendPresenceUpdate(state, chatId);
+
+        console.log('✅ [INSTANCE-MANAGER] Estado de presencia actualizado');
     }
 
     // Enviar imagen con caption

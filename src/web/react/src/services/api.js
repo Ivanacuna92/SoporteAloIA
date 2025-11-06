@@ -642,3 +642,134 @@ export async function deleteMyMessage(messageKey) {
 
   return response.json();
 }
+
+// ===== FUNCIONES AVANZADAS DE WHATSAPP =====
+
+// Reaccionar a un mensaje
+export async function reactToMessage(messageKey, emoji) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/react-message`, {
+    method: 'POST',
+    body: JSON.stringify({ messageKey, emoji })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando reacción');
+  }
+
+  return response.json();
+}
+
+// Editar mensaje
+export async function editMessage(messageKey, newText) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/edit-message`, {
+    method: 'POST',
+    body: JSON.stringify({ messageKey, newText })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error editando mensaje');
+  }
+
+  return response.json();
+}
+
+// Enviar ubicación
+export async function sendLocation(phone, latitude, longitude, name = '', address = '') {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-location`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, latitude, longitude, name, address })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando ubicación');
+  }
+
+  return response.json();
+}
+
+// Enviar contacto
+export async function sendContact(phone, contactName, contactNumber) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-contact`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, contactName, contactNumber })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando contacto');
+  }
+
+  return response.json();
+}
+
+// Enviar sticker
+export async function sendSticker(phone, stickerFile) {
+  const formData = new FormData();
+  formData.append('phone', phone);
+  formData.append('sticker', stickerFile);
+
+  const response = await fetch(`${API_BASE}/my-instance/send-sticker`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando sticker');
+  }
+
+  return response.json();
+}
+
+// Marcar como leído
+export async function markAsRead(messageKey) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/mark-read`, {
+    method: 'POST',
+    body: JSON.stringify({ messageKey })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error marcando como leído');
+  }
+
+  return response.json();
+}
+
+// Actualizar estado de presencia (escribiendo, grabando, etc.)
+export async function sendPresence(phone, state) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/presence`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, state })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error actualizando presencia');
+  }
+
+  return response.json();
+}
+
+// Enviar mensaje con opciones avanzadas (menciones, responder)
+export async function sendMessageAdvanced(phone, message, options = {}) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message-advanced`, {
+    method: 'POST',
+    body: JSON.stringify({
+      phone,
+      message,
+      ...options
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando mensaje');
+  }
+
+  return response.json();
+}

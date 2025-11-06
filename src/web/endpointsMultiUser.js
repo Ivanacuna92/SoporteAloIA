@@ -586,4 +586,279 @@ module.exports = function(app, requireAuth, requireAdmin) {
             res.status(500).json({ error: 'Error obteniendo configuración' });
         }
     });
+
+    // ===== ENDPOINTS DE FUNCIONALIDADES AVANZADAS =====
+
+    // Reaccionar a un mensaje
+    app.post('/api/my-instance/react-message', requireAuth, async (req, res) => {
+        try {
+            const { messageKey, emoji } = req.body;
+
+            if (!messageKey || emoji === undefined) {
+                return res.status(400).json({
+                    error: 'messageKey y emoji son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            await instanceManager.reactToMessage(req.user.id, messageKey, emoji);
+
+            res.json({
+                success: true,
+                message: 'Reacción enviada correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando reacción:', error);
+            res.status(500).json({
+                error: 'Error enviando reacción',
+                details: error.message
+            });
+        }
+    });
+
+    // Editar un mensaje
+    app.post('/api/my-instance/edit-message', requireAuth, async (req, res) => {
+        try {
+            const { messageKey, newText } = req.body;
+
+            if (!messageKey || !newText) {
+                return res.status(400).json({
+                    error: 'messageKey y newText son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            await instanceManager.editMessage(req.user.id, messageKey, newText);
+
+            res.json({
+                success: true,
+                message: 'Mensaje editado correctamente'
+            });
+        } catch (error) {
+            console.error('Error editando mensaje:', error);
+            res.status(500).json({
+                error: 'Error editando mensaje',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar ubicación
+    app.post('/api/my-instance/send-location', requireAuth, async (req, res) => {
+        try {
+            const { phone, latitude, longitude, name, address } = req.body;
+
+            if (!phone || latitude === undefined || longitude === undefined) {
+                return res.status(400).json({
+                    error: 'Phone, latitude y longitude son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendLocation(
+                req.user.id,
+                chatId,
+                latitude,
+                longitude,
+                name || '',
+                address || ''
+            );
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            await logger.log('soporte', `[Ubicación: ${name || 'Sin nombre'}]`, phone, req.user.name, true, req.user.id);
+
+            res.json({
+                success: true,
+                message: 'Ubicación enviada correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando ubicación:', error);
+            res.status(500).json({
+                error: 'Error enviando ubicación',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar contacto
+    app.post('/api/my-instance/send-contact', requireAuth, async (req, res) => {
+        try {
+            const { phone, contactName, contactNumber } = req.body;
+
+            if (!phone || !contactName || !contactNumber) {
+                return res.status(400).json({
+                    error: 'Phone, contactName y contactNumber son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendContact(req.user.id, chatId, contactName, contactNumber);
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            await logger.log('soporte', `[Contacto: ${contactName}]`, phone, req.user.name, true, req.user.id);
+
+            res.json({
+                success: true,
+                message: 'Contacto enviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando contacto:', error);
+            res.status(500).json({
+                error: 'Error enviando contacto',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar sticker
+    app.post('/api/my-instance/send-sticker', requireAuth, upload.single('sticker'), async (req, res) => {
+        try {
+            const { phone } = req.body;
+
+            if (!phone || !req.file) {
+                return res.status(400).json({
+                    error: 'Phone y sticker son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendSticker(req.user.id, chatId, req.file.buffer);
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            await logger.log('soporte', '[Sticker]', phone, req.user.name, true, req.user.id);
+
+            res.json({
+                success: true,
+                message: 'Sticker enviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando sticker:', error);
+            res.status(500).json({
+                error: 'Error enviando sticker',
+                details: error.message
+            });
+        }
+    });
+
+    // Marcar chat como leído
+    app.post('/api/my-instance/mark-read', requireAuth, async (req, res) => {
+        try {
+            const { messageKey } = req.body;
+
+            if (!messageKey) {
+                return res.status(400).json({
+                    error: 'messageKey es requerido'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            await instanceManager.markAsRead(req.user.id, messageKey);
+
+            res.json({
+                success: true,
+                message: 'Chat marcado como leído'
+            });
+        } catch (error) {
+            console.error('Error marcando como leído:', error);
+            res.status(500).json({
+                error: 'Error marcando como leído',
+                details: error.message
+            });
+        }
+    });
+
+    // Actualizar estado de presencia (escribiendo, grabando, etc.)
+    app.post('/api/my-instance/presence', requireAuth, async (req, res) => {
+        try {
+            const { phone, state } = req.body;
+
+            if (!phone || !state) {
+                return res.status(400).json({
+                    error: 'Phone y state son requeridos'
+                });
+            }
+
+            // Validar estados permitidos
+            const validStates = ['composing', 'recording', 'paused'];
+            if (!validStates.includes(state)) {
+                return res.status(400).json({
+                    error: `State debe ser uno de: ${validStates.join(', ')}`
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendPresenceUpdate(req.user.id, chatId, state);
+
+            res.json({
+                success: true,
+                message: 'Estado de presencia actualizado'
+            });
+        } catch (error) {
+            console.error('Error actualizando presencia:', error);
+            res.status(500).json({
+                error: 'Error actualizando presencia',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar mensaje con opciones avanzadas (menciones, responder a mensaje)
+    app.post('/api/my-instance/send-message-advanced', requireAuth, async (req, res) => {
+        try {
+            const { phone, message, quotedMessageId, quotedRemoteJid, quotedParticipant, mentions } = req.body;
+
+            if (!phone || !message) {
+                return res.status(400).json({
+                    error: 'Phone y message son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            const options = {};
+
+            // Agregar quoted message si se especifica
+            if (quotedMessageId && quotedRemoteJid) {
+                options.quotedMessageId = quotedMessageId;
+                options.quotedRemoteJid = quotedRemoteJid;
+                if (quotedParticipant) {
+                    options.quotedParticipant = quotedParticipant;
+                }
+            }
+
+            // Agregar menciones si se especifican
+            if (mentions && Array.isArray(mentions)) {
+                options.mentions = mentions;
+            }
+
+            await instanceManager.sendMessage(req.user.id, chatId, message, options);
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            await logger.log('soporte', message, phone, req.user.name, true, req.user.id);
+
+            res.json({
+                success: true,
+                message: 'Mensaje enviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando mensaje avanzado:', error);
+            res.status(500).json({
+                error: 'Error enviando mensaje',
+                details: error.message
+            });
+        }
+    });
 };
