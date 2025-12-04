@@ -148,6 +148,9 @@ function ChatPanel({ contact, onUpdateContact }) {
   const sendMediaFile = async (file, type, caption) => {
     setSendingMedia(true);
 
+    // Crear URL local para preview inmediato
+    const localUrl = URL.createObjectURL(file);
+
     try {
       if (type === 'image') {
         await sendMyImage(contact.phone, file, caption);
@@ -157,13 +160,16 @@ function ChatPanel({ contact, onUpdateContact }) {
         await sendMyAudio(contact.phone, file, false);
       }
 
-      // Agregar mensaje visual al chat
+      // Agregar mensaje visual al chat con preview local
       const newMessage = {
         type: 'HUMAN',
-        message: caption || `[${type === 'image' ? 'Imagen' : type === 'document' ? 'Documento' : 'Audio'}]`,
+        message: caption || '',
         timestamp: new Date().toISOString(),
         hasMedia: true,
-        mediaType: type
+        mediaType: type,
+        mediaUrl: localUrl,
+        mediaMimetype: file.type,
+        mediaFilename: file.name
       };
 
       onUpdateContact({
@@ -176,6 +182,8 @@ function ChatPanel({ contact, onUpdateContact }) {
     } catch (error) {
       setErrorMessage(`Error enviando ${type}: ${error.message}`);
       setShowErrorModal(true);
+      // Liberar URL si hubo error
+      URL.revokeObjectURL(localUrl);
     } finally {
       setSendingMedia(false);
     }

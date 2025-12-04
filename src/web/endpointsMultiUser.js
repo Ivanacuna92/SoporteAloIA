@@ -401,7 +401,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 media_filename: req.file.originalname,
                 media_caption: caption || ''
             };
-            await logger.log('soporte', caption || '', phone, req.user.name, true, req.user.id, null, mediaInfo);
+            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
+            await logger.log('soporte', caption || '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
 
             res.json({
                 success: true,
@@ -456,7 +457,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 media_filename: req.file.originalname,
                 media_caption: caption || ''
             };
-            await logger.log('soporte', caption || '', phone, req.user.name, true, req.user.id, null, mediaInfo);
+            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
+            await logger.log('soporte', caption || '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
 
             res.json({
                 success: true,
@@ -505,7 +507,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 media_filename: req.file.originalname,
                 media_caption: null
             };
-            await logger.log('soporte', '', phone, req.user.name, true, req.user.id, null, mediaInfo);
+            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
+            await logger.log('soporte', '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
 
             res.json({
                 success: true,
