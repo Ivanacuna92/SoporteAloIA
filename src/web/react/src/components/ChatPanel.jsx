@@ -3,6 +3,121 @@ import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, forwardMyMessa
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+// Componente de reproductor de audio personalizado estilo WhatsApp
+function AudioPlayer({ src, isClient }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const formatTime = (time) => {
+    if (!time || isNaN(time)) return '0:00';
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+  };
+
+  const handleSeek = (e) => {
+    if (!audioRef.current || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = x / rect.width;
+    audioRef.current.currentTime = percentage * duration;
+  };
+
+  const progress = duration ? (currentTime / duration) * 100 : 0;
+
+  if (!src) {
+    return (
+      <div className={`flex items-center gap-2 p-2 rounded-xl ${isClient ? 'bg-gray-100' : 'bg-white/20'}`} style={{ minWidth: '200px' }}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isClient ? 'bg-gray-300' : 'bg-white/30'}`}>
+          <svg className="w-5 h-5 opacity-50" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" clipRule="evenodd"/>
+          </svg>
+        </div>
+        <span className="text-xs opacity-70">Audio no disponible</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex items-center gap-2 p-2 rounded-xl ${isClient ? 'bg-gray-100' : 'bg-white/20'}`} style={{ minWidth: '220px' }}>
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={handleEnded}
+        preload="metadata"
+      />
+
+      {/* Botón Play/Pause */}
+      <button
+        onClick={togglePlay}
+        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+          isClient
+            ? 'bg-navetec-primary text-white hover:bg-navetec-secondary'
+            : 'bg-white/30 hover:bg-white/40'
+        }`}
+      >
+        {isPlaying ? (
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+          </svg>
+        ) : (
+          <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"/>
+          </svg>
+        )}
+      </button>
+
+      {/* Barra de progreso y tiempo */}
+      <div className="flex-1 min-w-0">
+        <div
+          className={`h-1.5 rounded-full cursor-pointer ${isClient ? 'bg-gray-300' : 'bg-white/30'}`}
+          onClick={handleSeek}
+        >
+          <div
+            className={`h-full rounded-full transition-all ${isClient ? 'bg-navetec-primary' : 'bg-white'}`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className={`flex justify-between text-xs mt-1 ${isClient ? 'text-gray-500' : 'text-white/70'}`}>
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChatPanel({ contact, onUpdateContact }) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -728,19 +843,10 @@ function ChatPanel({ contact, onUpdateContact }) {
                         )
                       )}
                       {msg.mediaType === 'audio' && (
-                        <div className={`flex items-center gap-2 p-2 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>
-                          <svg className="w-8 h-8 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" clipRule="evenodd"/>
-                          </svg>
-                          {msg.mediaUrl ? (
-                            <audio controls className="flex-1 h-10" style={{ maxWidth: '200px' }}>
-                              <source src={msg.mediaUrl} type={msg.mediaMimetype || 'audio/ogg'} />
-                              Tu navegador no soporta audio
-                            </audio>
-                          ) : (
-                            <span className="text-xs opacity-70">Audio no disponible</span>
-                          )}
-                        </div>
+                        <AudioPlayer
+                          src={msg.mediaUrl}
+                          isClient={isClient}
+                        />
                       )}
                       {msg.mediaType === 'document' && (
                         <div className={`flex items-center gap-2 p-3 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>
