@@ -456,27 +456,35 @@ class WhatsAppInstanceManager {
             let mimetype = null;
             let filename = null;
 
+            // Helper para extraer extensión limpia del mimetype (ej: "audio/ogg; codecs=opus" -> "ogg")
+            const getExtFromMime = (mime) => {
+                const part = mime.split('/')[1] || '';
+                return part.split(';')[0].trim(); // Remover parámetros como "; codecs=opus"
+            };
+
             // Identificar tipo de medio
             if (msg.message.imageMessage) {
                 mediaMessage = msg.message.imageMessage;
                 mediaType = 'image';
                 mimetype = mediaMessage.mimetype || 'image/jpeg';
-                filename = `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+                filename = `${userId}_${Date.now()}.${getExtFromMime(mimetype)}`;
             } else if (msg.message.videoMessage) {
                 mediaMessage = msg.message.videoMessage;
                 mediaType = 'video';
                 mimetype = mediaMessage.mimetype || 'video/mp4';
-                filename = `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+                filename = `${userId}_${Date.now()}.${getExtFromMime(mimetype)}`;
             } else if (msg.message.documentMessage) {
                 mediaMessage = msg.message.documentMessage;
                 mediaType = 'document';
                 mimetype = mediaMessage.mimetype || 'application/octet-stream';
-                filename = mediaMessage.fileName || `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+                filename = mediaMessage.fileName || `${userId}_${Date.now()}.${getExtFromMime(mimetype)}`;
             } else if (msg.message.audioMessage) {
                 mediaMessage = msg.message.audioMessage;
                 mediaType = 'audio';
                 mimetype = mediaMessage.mimetype || 'audio/ogg';
-                filename = `${userId}_${Date.now()}.${mimetype.split('/')[1]}`;
+                // Para audios de WhatsApp, usar .ogg como extensión por defecto
+                const ext = getExtFromMime(mimetype) || 'ogg';
+                filename = `${userId}_${Date.now()}.${ext}`;
             } else if (msg.message.stickerMessage) {
                 mediaMessage = msg.message.stickerMessage;
                 mediaType = 'sticker';

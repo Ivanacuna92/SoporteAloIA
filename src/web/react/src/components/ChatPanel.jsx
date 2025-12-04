@@ -670,38 +670,69 @@ function ChatPanel({ contact, onUpdateContact }) {
                   {msg.hasMedia && msg.mediaType && (
                     <div className="mb-2">
                       {msg.mediaType === 'image' && (
-                        <img
-                          src={msg.mediaUrl}
-                          alt={msg.mediaCaption || 'Imagen'}
-                          className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => {
-                            setSelectedMedia({ url: msg.mediaUrl, type: 'image', caption: msg.mediaCaption });
-                            setShowMediaModal(true);
-                          }}
-                          style={{ maxWidth: '300px' }}
-                        />
+                        msg.mediaUrl ? (
+                          <img
+                            src={msg.mediaUrl}
+                            alt={msg.mediaCaption || 'Imagen'}
+                            className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                              setSelectedMedia({ url: msg.mediaUrl, type: 'image', caption: msg.mediaCaption });
+                              setShowMediaModal(true);
+                            }}
+                            style={{ maxWidth: '300px' }}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+                            }}
+                          />
+                        ) : (
+                          <div className={`flex items-center gap-2 p-3 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>
+                            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd"/>
+                            </svg>
+                            <span className="text-xs opacity-70">Imagen enviada</span>
+                          </div>
+                        )
                       )}
                       {msg.mediaType === 'video' && (
-                        <video
-                          controls
-                          className="rounded-lg max-w-full max-h-64 cursor-pointer"
-                          style={{ maxWidth: '300px' }}
-                          onClick={(e) => {
-                            if (e.target.paused) {
-                              setSelectedMedia({ url: msg.mediaUrl, type: 'video', caption: msg.mediaCaption, mimetype: msg.mediaMimetype });
-                              setShowMediaModal(true);
-                            }
-                          }}
-                        >
-                          <source src={msg.mediaUrl} type={msg.mediaMimetype || 'video/mp4'} />
-                          Tu navegador no soporta video
-                        </video>
+                        msg.mediaUrl ? (
+                          <video
+                            controls
+                            className="rounded-lg max-w-full max-h-64 cursor-pointer"
+                            style={{ maxWidth: '300px' }}
+                            onClick={(e) => {
+                              if (e.target.paused) {
+                                setSelectedMedia({ url: msg.mediaUrl, type: 'video', caption: msg.mediaCaption, mimetype: msg.mediaMimetype });
+                                setShowMediaModal(true);
+                              }
+                            }}
+                          >
+                            <source src={msg.mediaUrl} type={msg.mediaMimetype || 'video/mp4'} />
+                            Tu navegador no soporta video
+                          </video>
+                        ) : (
+                          <div className={`flex items-center gap-2 p-3 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>
+                            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"/>
+                            </svg>
+                            <span className="text-xs opacity-70">Video enviado</span>
+                          </div>
+                        )
                       )}
                       {msg.mediaType === 'audio' && (
-                        <audio controls className="w-full">
-                          <source src={msg.mediaUrl} type={msg.mediaMimetype || 'audio/ogg'} />
-                          Tu navegador no soporta audio
-                        </audio>
+                        <div className={`flex items-center gap-2 p-2 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>
+                          <svg className="w-8 h-8 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" clipRule="evenodd"/>
+                          </svg>
+                          {msg.mediaUrl ? (
+                            <audio controls className="flex-1 h-10" style={{ maxWidth: '200px' }}>
+                              <source src={msg.mediaUrl} type={msg.mediaMimetype || 'audio/ogg'} />
+                              Tu navegador no soporta audio
+                            </audio>
+                          ) : (
+                            <span className="text-xs opacity-70">Audio no disponible</span>
+                          )}
+                        </div>
                       )}
                       {msg.mediaType === 'document' && (
                         <div className={`flex items-center gap-2 p-3 rounded-lg ${isClient ? 'bg-gray-100' : 'bg-white/20'}`}>

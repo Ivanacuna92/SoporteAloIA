@@ -268,13 +268,16 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         status: log.status,
                         messageId: log.messageId,
                         userName: log.userName,
+                        participant: log.participant,
                         // Campos de medios
                         hasMedia: log.hasMedia || false,
                         mediaType: log.mediaType,
                         mediaUrl: log.mediaUrl,
                         mediaMimetype: log.mediaMimetype,
                         mediaFilename: log.mediaFilename,
-                        mediaCaption: log.mediaCaption
+                        mediaCaption: log.mediaCaption,
+                        // Campo de mensaje reenviado
+                        isForwarded: log.isForwarded || false
                     }));
 
                     // Obtener modo actual (solo humano o soporte, sin IA) - DEBE SER AWAIT
@@ -380,17 +383,25 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.sendImage(req.user.id, chatId, req.file.buffer, caption || '');
 
+            // Guardar archivo localmente para poder mostrarlo en el chat
+            const ext = req.file.mimetype.split('/')[1] || 'jpg';
+            const filename = `${phone}_${Date.now()}.${ext}`;
+            const mediaDir = path.join(process.cwd(), 'data', 'media', 'images');
+            await fs.mkdir(mediaDir, { recursive: true });
+            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
+            const mediaUrl = `/media/images/${filename}`;
+
             // Registrar el mensaje
             const logger = require('../services/logger');
             const mediaInfo = {
                 has_media: true,
                 media_type: 'image',
-                media_url: null, // No se guarda en este caso
+                media_url: mediaUrl,
                 media_mimetype: req.file.mimetype,
                 media_filename: req.file.originalname,
                 media_caption: caption || ''
             };
-            await logger.log('soporte', caption || '[Imagen]', phone, req.user.name, true, req.user.id, null, mediaInfo);
+            await logger.log('soporte', caption || '', phone, req.user.name, true, req.user.id, null, mediaInfo);
 
             res.json({
                 success: true,
@@ -428,17 +439,24 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 caption || ''
             );
 
+            // Guardar archivo localmente para poder mostrarlo en el chat
+            const filename = `${phone}_${Date.now()}_${req.file.originalname}`;
+            const mediaDir = path.join(process.cwd(), 'data', 'media', 'documents');
+            await fs.mkdir(mediaDir, { recursive: true });
+            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
+            const mediaUrl = `/media/documents/${filename}`;
+
             // Registrar el mensaje
             const logger = require('../services/logger');
             const mediaInfo = {
                 has_media: true,
                 media_type: 'document',
-                media_url: null,
+                media_url: mediaUrl,
                 media_mimetype: req.file.mimetype,
                 media_filename: req.file.originalname,
                 media_caption: caption || ''
             };
-            await logger.log('soporte', caption || `[Documento: ${req.file.originalname}]`, phone, req.user.name, true, req.user.id, null, mediaInfo);
+            await logger.log('soporte', caption || '', phone, req.user.name, true, req.user.id, null, mediaInfo);
 
             res.json({
                 success: true,
@@ -469,17 +487,25 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.sendAudio(req.user.id, chatId, req.file.buffer, ptt === 'true');
 
+            // Guardar archivo localmente para poder mostrarlo en el chat
+            const ext = req.file.mimetype.split('/')[1] || 'mp3';
+            const filename = `${phone}_${Date.now()}.${ext}`;
+            const mediaDir = path.join(process.cwd(), 'data', 'media', 'audios');
+            await fs.mkdir(mediaDir, { recursive: true });
+            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
+            const mediaUrl = `/media/audios/${filename}`;
+
             // Registrar el mensaje
             const logger = require('../services/logger');
             const mediaInfo = {
                 has_media: true,
                 media_type: 'audio',
-                media_url: null,
+                media_url: mediaUrl,
                 media_mimetype: req.file.mimetype,
                 media_filename: req.file.originalname,
                 media_caption: null
             };
-            await logger.log('soporte', '[Audio]', phone, req.user.name, true, req.user.id, null, mediaInfo);
+            await logger.log('soporte', '', phone, req.user.name, true, req.user.id, null, mediaInfo);
 
             res.json({
                 success: true,
