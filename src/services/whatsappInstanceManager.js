@@ -428,7 +428,10 @@ class WhatsAppInstanceManager {
             const messageText = conversation || '';
 
             // Log del mensaje con información del grupo y medios
-            await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, null, mediaInfo, isForwarded);
+            // Extraer messageId y participant para poder responder a este mensaje
+            const messageId = msg.key.id;
+            const participant = msg.key.participant || null;
+            await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant);
 
             // Asignar grupo a este usuario de soporte si no está asignado
             await this.assignClientToUser(groupId, supportUserId, true, groupName, groupPicture);

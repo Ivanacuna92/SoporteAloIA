@@ -6,7 +6,7 @@ class Logger {
         this.isProcessingQueue = false;
     }
 
-    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null, isForwarded = false) {
+    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null, isForwarded = false, participant = null) {
         const timestamp = new Date();
         const logEntry = {
             timestamp: timestamp.toISOString(),
@@ -19,6 +19,7 @@ class Logger {
             supportUserId,
             messageId,
             status: messageId ? 'sent' : null, // Si hay messageId, el mensaje fue enviado
+            participant, // JID del participante que envió el mensaje (para grupos)
             // Información de medios
             has_media: mediaInfo?.has_media || false,
             media_type: mediaInfo?.media_type || null,
@@ -58,6 +59,7 @@ class Logger {
                 role: logEntry.role,
                 support_user_id: logEntry.supportUserId || null,
                 session_id: null,
+                participant: logEntry.participant || null,
                 // Campos de medios - convertir undefined a null
                 has_media: logEntry.has_media || false,
                 media_type: logEntry.media_type || null,
@@ -301,6 +303,7 @@ class Logger {
                 status: log.status,
                 response: log.response,
                 supportUserId: log.support_user_id,
+                participant: log.participant,
                 // Campos de medios
                 hasMedia: log.has_media || false,
                 mediaType: log.media_type,
