@@ -277,7 +277,10 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         mediaFilename: log.mediaFilename,
                         mediaCaption: log.mediaCaption,
                         // Campo de mensaje reenviado
-                        isForwarded: log.isForwarded || false
+                        isForwarded: log.isForwarded || false,
+                        // Campos de mensaje citado
+                        hasQuotedMsg: log.hasQuotedMsg || false,
+                        quotedMsg: log.quotedMsg || null
                     }));
 
                     // Obtener modo actual (solo humano o soporte, sin IA) - DEBE SER AWAIT
@@ -518,6 +521,56 @@ module.exports = function(app, requireAuth, requireAdmin) {
             console.error('Error enviando audio:', error);
             res.status(500).json({
                 error: 'Error enviando audio',
+                details: error.message
+            });
+        }
+    });
+
+    // Enviar video
+    app.post('/api/my-instance/send-video', requireAuth, upload.single('video'), async (req, res) => {
+        try {
+            const { phone, caption } = req.body;
+
+            if (!phone || !req.file) {
+                return res.status(400).json({
+                    error: 'Phone y video son requeridos'
+                });
+            }
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendVideo(req.user.id, chatId, req.file.buffer, caption || '');
+
+            // Guardar archivo localmente para poder mostrarlo en el chat
+            const ext = req.file.mimetype.split('/')[1] || 'mp4';
+            const filename = `${phone}_${Date.now()}.${ext}`;
+            const mediaDir = path.join(process.cwd(), 'data', 'media', 'videos');
+            await fs.mkdir(mediaDir, { recursive: true });
+            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
+            const mediaUrl = `/media/videos/${filename}`;
+
+            // Registrar el mensaje
+            const logger = require('../services/logger');
+            const mediaInfo = {
+                has_media: true,
+                media_type: 'video',
+                media_url: mediaUrl,
+                media_mimetype: req.file.mimetype,
+                media_filename: req.file.originalname,
+                media_caption: caption || ''
+            };
+            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
+            await logger.log('soporte', caption || '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
+
+            res.json({
+                success: true,
+                message: 'Video enviado correctamente'
+            });
+        } catch (error) {
+            console.error('Error enviando video:', error);
+            res.status(500).json({
+                error: 'Error enviando video',
                 details: error.message
             });
         }

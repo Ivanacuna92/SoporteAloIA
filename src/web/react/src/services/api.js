@@ -613,6 +613,27 @@ export async function sendMyAudio(phone, audioFile, ptt = false) {
   return response.json();
 }
 
+// Enviar video desde mi instancia
+export async function sendMyVideo(phone, videoFile, caption = '') {
+  const formData = new FormData();
+  formData.append('phone', phone);
+  formData.append('video', videoFile);
+  if (caption) formData.append('caption', caption);
+
+  const response = await fetch(`${API_BASE}/my-instance/send-video`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando video');
+  }
+
+  return response.json();
+}
+
 // Reenviar mensaje desde mi instancia
 export async function forwardMyMessage(phone, messageKey) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/forward-message`, {

@@ -47,13 +47,13 @@ function Dashboard() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
-      <div className="flex justify-between items-center mb-8">
-        <h2 className="text-2xl font-semibold text-gray-800">Panel de Control</h2>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-semibold text-gray-800">Panel de Control</h2>
         <select
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
-          className="px-4 py-2 rounded-xl border bg-white text-gray-700 focus:outline-none transition-all text-sm"
+          className="w-full md:w-auto px-4 py-2 rounded-xl border bg-white text-gray-700 focus:outline-none transition-all text-sm"
           style={{ borderColor: '#E8EBED' }}
           onFocus={(e) => {
             e.target.style.borderColor = '#FD6144';
@@ -71,7 +71,7 @@ function Dashboard() {
         </select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4 mb-6 md:mb-8">
         <StatCard
           title="Total Mensajes"
           value={stats?.totalMessages || 0}
@@ -100,12 +100,13 @@ function Dashboard() {
         />
       </div>
 
-      <div className="bg-white rounded-2xl p-6 mb-8" style={{
+      <div className="bg-white rounded-2xl p-4 md:p-6 mb-6 md:mb-8" style={{
         border: '1px solid #E8EBED',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
       }}>
-        <h3 className="text-lg font-semibold text-gray-800 mb-6">Actividad por Hora</h3>
-        <div className="flex items-end h-48 gap-1">
+        <h3 className="text-base md:text-lg font-semibold text-gray-800 mb-4 md:mb-6">Actividad por Hora</h3>
+        <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
+          <div className="flex items-end h-48 gap-1 min-w-max md:min-w-0">
           {Object.entries(stats?.messagesByHour || {}).map(([hour, count]) => (
             <div key={hour} className="flex-1 flex flex-col items-center">
               <div
@@ -126,10 +127,11 @@ function Dashboard() {
               <span className="text-xs text-gray-600 mt-1">{hour}h</span>
             </div>
           ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <InsightCard
           title="HORA PICO"
           value={getPeakHour(stats?.messagesByHour)}
@@ -150,7 +152,7 @@ function Dashboard() {
 function StatCard({ title, value, subtitle }) {
   return (
     <div
-      className="bg-white rounded-xl p-6 transition-all cursor-pointer"
+      className="bg-white rounded-xl p-4 md:p-6 transition-all cursor-pointer"
       style={{
         border: '1px solid #E8EBED',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
@@ -164,10 +166,10 @@ function StatCard({ title, value, subtitle }) {
         e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
       }}
     >
-      <h3 className="text-xs text-gray-600 font-medium mb-2">{title}</h3>
-      <div className="flex items-baseline gap-2">
-        <p className="text-2xl font-semibold text-gray-800">{value}</p>
-        {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
+      <h3 className="text-[10px] md:text-xs text-gray-600 font-medium mb-2">{title}</h3>
+      <div className="flex items-baseline gap-1 md:gap-2">
+        <p className="text-lg md:text-2xl font-semibold text-gray-800">{value}</p>
+        {subtitle && <span className="text-[10px] md:text-xs text-gray-500">{subtitle}</span>}
       </div>
     </div>
   );
@@ -176,7 +178,7 @@ function StatCard({ title, value, subtitle }) {
 function InsightCard({ title, value }) {
   return (
     <div
-      className="rounded-xl text-white p-6 transition-all cursor-pointer"
+      className="rounded-xl text-white p-4 md:p-6 transition-all cursor-pointer"
       style={{
         background: '#FD6144',
         boxShadow: '0 4px 12px rgba(92, 25, 227, 0.2)'
@@ -190,8 +192,8 @@ function InsightCard({ title, value }) {
         e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.2)';
       }}
     >
-      <h4 className="text-xs font-medium mb-2 opacity-80">{title}</h4>
-      <p className="text-3xl font-semibold">{value}</p>
+      <h4 className="text-[10px] md:text-xs font-medium mb-2 opacity-80">{title}</h4>
+      <p className="text-2xl md:text-3xl font-semibold">{value}</p>
     </div>
   );
 }

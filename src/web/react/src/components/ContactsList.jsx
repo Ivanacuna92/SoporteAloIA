@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { getMyContacts, toggleHumanMode } from '../services/api';
+import React, { useEffect, useState, useRef } from 'react';
+import { getMyContacts } from '../services/api';
+import notificationSound from '../assets/notification.mp3';
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -9,8 +10,15 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     const saved = localStorage.getItem('lastReadMessages');
     return saved ? JSON.parse(saved) : {};
   });
+  const audioRef = useRef(null);
+  const previousTotalMessages = useRef(0);
 
   useEffect(() => {
+    // Pedir permiso para notificaciones al cargar
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
     loadContacts();
     const interval = setInterval(loadContacts, 5000); // Actualizar cada 5 segundos (balance entre rendimiento y UX)
     return () => clearInterval(interval);
@@ -24,6 +32,72 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
   const loadContacts = async () => {
     try {
       const data = await getMyContacts();
+
+      // Calcular total de mensajes actuales
+      const currentTotalMessages = data.reduce((sum, contact) => sum + contact.messages.length, 0);
+
+      // Detectar nuevos mensajes y mostrar notificación
+      if (previousTotalMessages.current > 0 && currentTotalMessages > previousTotalMessages.current) {
+        // Encontrar el contacto con mensajes nuevos
+        const contactWithNewMessages = data.find((newContact, index) => {
+          const oldTotalMessages = contacts[index]?.messages?.length || 0;
+          return newContact.messages.length > oldTotalMessages;
+        });
+
+        if (contactWithNewMessages) {
+          const lastMessage = contactWithNewMessages.messages[contactWithNewMessages.messages.length - 1];
+          const contactName = contactWithNewMessages.isGroup
+            ? (contactWithNewMessages.groupName || contactWithNewMessages.phone)
+            : contactWithNewMessages.phone;
+
+          // Obtener preview del mensaje
+          let messagePreview = '';
+          if (lastMessage.message) {
+            messagePreview = lastMessage.message.length > 50
+              ? lastMessage.message.substring(0, 50) + '...'
+              : lastMessage.message;
+          } else if (lastMessage.hasMedia) {
+            messagePreview = `📎 ${lastMessage.mediaType === 'image' ? 'Imagen' :
+                                   lastMessage.mediaType === 'video' ? 'Video' :
+                                   lastMessage.mediaType === 'audio' ? 'Audio' :
+                                   lastMessage.mediaType === 'document' ? 'Documento' : 'Archivo'}`;
+          } else {
+            messagePreview = 'Nuevo mensaje';
+          }
+
+          // Mostrar notificación del sistema
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const notification = new Notification(`💬 ${contactName}`, {
+              body: messagePreview,
+              icon: contactWithNewMessages.groupPicture || '/favicon.ico',
+              badge: '/favicon.ico',
+              tag: contactWithNewMessages.phone, // Para no duplicar notificaciones del mismo contacto
+              requireInteraction: false,
+              silent: false // El sonido lo reproducimos nosotros
+            });
+
+            // Hacer que al hacer clic en la notificación, se abra/enfoque la ventana y seleccione el contacto
+            notification.onclick = () => {
+              window.focus();
+              onSelectContact(contactWithNewMessages);
+              notification.close();
+            };
+
+            // Auto-cerrar después de 5 segundos
+            setTimeout(() => notification.close(), 5000);
+          }
+
+          // Reproducir sonido de notificación
+          if (audioRef.current) {
+            audioRef.current.play().catch(error => {
+              console.log('Error reproduciendo sonido:', error);
+            });
+          }
+        }
+      }
+
+      // Actualizar el contador de mensajes
+      previousTotalMessages.current = currentTotalMessages;
 
       // Actualizar solo si hay cambios reales
       setContacts(prevContacts => {
@@ -87,17 +161,6 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     }
   };
 
-  const handleToggleMode = async (phone, isHuman) => {
-    try {
-      await toggleHumanMode(phone, isHuman);
-      setContacts(prev => prev.map(c =>
-        c.phone === phone ? { ...c, isHumanMode: isHuman } : c
-      ));
-    } catch (error) {
-      // Error silencioso
-    }
-  };
-
   const handleSelectContact = (contact) => {
     // Marcar mensajes como leídos
     setLastReadMessages(prev => ({
@@ -148,22 +211,25 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     });
 
   if (loading) {
-    return <div className="w-96 bg-white border-r border-gray-200 flex items-center justify-center">
+    return <div className="w-full md:w-96 bg-white border-r border-gray-200 flex items-center justify-center">
       <span className="text-gray-500">Cargando contactos...</span>
     </div>;
   }
 
   return (
-    <div className="w-96 flex flex-col" style={{
+    <div className="w-full md:w-96 flex flex-col overflow-hidden" style={{
       background: '#FAFBFC',
       borderRight: '1px solid #E8EBED'
     }}>
+      {/* Audio de notificación oculto */}
+      <audio ref={audioRef} src={notificationSound} preload="auto" />
+
       {/* Header estilo moderno */}
-      <div className="p-6 pb-4">
+      <div className="p-4 md:p-6 pb-4 flex-shrink-0">
         <h2 className="text-base font-semibold text-gray-800 mb-4">Conversaciones</h2>
 
-        <div className="relative">
-          <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="relative w-full">
+          <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -171,7 +237,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             placeholder="Buscar contacto o mensaje..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl transition-all focus:outline-none text-sm"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl transition-all focus:outline-none text-sm box-border"
             style={{
               background: '#F3F4F6',
               border: '1px solid transparent',
@@ -191,14 +257,14 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       </div>
 
       {/* Lista de contactos */}
-      <div className="flex-1 overflow-y-auto px-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 md:px-3">
         {filteredContacts.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm">No hay contactos</div>
         ) : (
           filteredContacts.map(contact => (
             <div
               key={contact.phone}
-              className="mb-1 rounded-xl cursor-pointer transition-all duration-200"
+              className="mb-1 rounded-xl cursor-pointer transition-all duration-200 w-full"
               style={{
                 background: selectedContact?.phone === contact.phone
                   ? 'rgba(92, 25, 227, 0.08)'
@@ -226,9 +292,9 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               }}
               onClick={() => handleSelectContact(contact)}
             >
-              <div className="flex items-center p-3">
+              <div className="flex items-center p-3 w-full min-w-0">
                 {/* Avatar moderno */}
-                <div className="relative mr-3">
+                <div className="relative mr-3 flex-shrink-0">
                   {contact.isGroup && contact.groupPicture ? (
                     <img
                       src={contact.groupPicture}
@@ -288,12 +354,12 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 </div>
 
                 {/* Info del contacto */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className={`text-sm truncate ${contact.leftGroup ? 'text-gray-400' : getUnreadCount(contact) > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div className="flex items-center justify-between mb-0.5 gap-2">
+                    <span className={`text-sm truncate flex-1 ${contact.leftGroup ? 'text-gray-400' : getUnreadCount(contact) > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
                       {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
                     </span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       {contact.leftGroup ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
                           background: 'rgba(107, 114, 128, 0.1)',
@@ -323,7 +389,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                       )}
                     </div>
                   </div>
-                  <p className={`text-xs truncate ${contact.leftGroup ? 'text-gray-400 italic' : getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                  <p className={`text-xs truncate w-full overflow-hidden ${contact.leftGroup ? 'text-gray-400 italic' : getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
                     {contact.leftGroup ? 'Ya no eres miembro' :
                      contact.lastMessage ?
                        // Si es un grupo y es mensaje de cliente, mostrar nombre del usuario

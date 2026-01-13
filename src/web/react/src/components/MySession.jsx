@@ -117,22 +117,22 @@ function MySession() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
+    <div className="p-4 md:p-8 max-w-4xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-gray-800 mb-2">Mi Sesión de WhatsApp</h2>
-        <p className="text-sm text-gray-500">
+      <div className="mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-semibold text-gray-800 mb-2">Mi Sesión de WhatsApp</h2>
+        <p className="text-xs md:text-sm text-gray-500">
           Conecta tu cuenta de WhatsApp para gestionar tus conversaciones
         </p>
       </div>
 
       {/* Main Card */}
-      <div className="bg-white rounded-2xl p-8" style={{
+      <div className="bg-white rounded-2xl p-4 md:p-8" style={{
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
         border: '1px solid #E8EBED'
       }}>
         {/* QR Area */}
-        <div className="rounded-xl p-8 flex items-center justify-center min-h-[320px] mb-6" style={{
+        <div className="rounded-xl p-4 md:p-8 flex items-center justify-center min-h-[280px] md:min-h-[320px] mb-6" style={{
           background: '#FAFBFC',
           border: '1px solid #E8EBED'
         }}>
@@ -145,31 +145,31 @@ function MySession() {
 
           {status === 'waiting' && qrData && (
             <div className="flex flex-col items-center">
-              <div ref={qrCanvasRef} className="flex items-center justify-center bg-white p-4 rounded-xl" style={{
+              <div ref={qrCanvasRef} className="flex items-center justify-center bg-white p-3 md:p-4 rounded-xl max-w-[240px] md:max-w-none" style={{
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
               }}></div>
-              <p className="text-xs text-gray-500 mt-4">Código válido por 60 segundos</p>
+              <p className="text-[10px] md:text-xs text-gray-500 mt-3 md:mt-4">Código válido por 60 segundos</p>
             </div>
           )}
 
           {status === 'connected' && (
             <div className="text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4" style={{
+              <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full mb-3 md:mb-4" style={{
                 background: 'rgba(34, 197, 94, 0.1)'
               }}>
-                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 md:w-10 md:h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-lg font-semibold text-gray-800 mb-1">
+              <p className="text-base md:text-lg font-semibold text-gray-800 mb-1">
                 Conectado
               </p>
               {phoneNumber && (
-                <p className="text-sm text-gray-500 mb-2">
+                <p className="text-xs md:text-sm text-gray-500 mb-2">
                   Número: {phoneNumber}
                 </p>
               )}
-              <p className="text-sm text-gray-500">
+              <p className="text-xs md:text-sm text-gray-500">
                 Tu WhatsApp está activo
               </p>
             </div>
@@ -177,17 +177,17 @@ function MySession() {
 
           {status === 'disconnected' && (
             <div className="text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4" style={{
+              <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full mb-3 md:mb-4" style={{
                 background: 'rgba(245, 158, 11, 0.1)'
               }}>
-                <svg className="w-10 h-10 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 md:w-10 md:h-10 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <p className="text-lg font-semibold text-gray-800 mb-1">
+              <p className="text-base md:text-lg font-semibold text-gray-800 mb-1">
                 Desconectado
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-xs md:text-sm text-gray-500">
                 Esperando inicialización...
               </p>
             </div>
@@ -195,17 +195,17 @@ function MySession() {
 
           {status === 'error' && (
             <div className="text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4" style={{
+              <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full mb-3 md:mb-4" style={{
                 background: 'rgba(239, 68, 68, 0.1)'
               }}>
-                <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 md:w-10 md:h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <p className="text-lg font-semibold text-gray-800 mb-1">
+              <p className="text-base md:text-lg font-semibold text-gray-800 mb-1">
                 Error de conexión
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-xs md:text-sm text-gray-500">
                 Intenta reiniciar la sesión
               </p>
             </div>
@@ -288,26 +288,26 @@ function MySession() {
         </div>
 
         {/* Instructions */}
-        <div className="pt-6 rounded-xl p-4" style={{
+        <div className="pt-4 md:pt-6 rounded-xl p-3 md:p-4" style={{
           background: '#FAFBFC',
           border: '1px solid #E8EBED'
         }}>
-          <p className="text-xs font-semibold text-gray-700 mb-3">Cómo vincular:</p>
-          <ol className="space-y-2 text-xs text-gray-600">
+          <p className="text-[10px] md:text-xs font-semibold text-gray-700 mb-3">Cómo vincular:</p>
+          <ol className="space-y-2 text-[10px] md:text-xs text-gray-600">
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>1</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>1</span>
               <span>Abre WhatsApp en tu teléfono</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>2</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>2</span>
               <span>Ve a Configuración → Dispositivos vinculados</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>3</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>3</span>
               <span>Toca "Vincular dispositivo"</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>4</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>4</span>
               <span>Escanea el código QR mostrado arriba</span>
             </li>
           </ol>

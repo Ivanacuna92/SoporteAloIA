@@ -7,7 +7,7 @@ async function applyMigration() {
         await database.connect();
 
         console.log('📖 Leyendo archivo de migración...');
-        const migrationSQL = await fs.readFile('./migrations/004_add_forwarded_support.sql', 'utf8');
+        const migrationSQL = await fs.readFile('./migrations/005_add_quoted_message_support.sql', 'utf8');
 
         // Separar las queries por punto y coma
         const queries = migrationSQL
@@ -39,7 +39,7 @@ async function applyMigration() {
         console.error('\n❌ Error aplicando migración:', error.message);
 
         if (error.message.includes('Duplicate column')) {
-            console.log('ℹ️  La columna is_forwarded ya existe en la base de datos');
+            console.log('ℹ️  Las columnas de quoted message ya existen en la base de datos');
         }
 
         await database.close();

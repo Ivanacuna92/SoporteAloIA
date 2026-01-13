@@ -135,7 +135,7 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       <Header
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -152,21 +152,28 @@ function App() {
         <MySession />
       ) : (
         <div className="flex flex-1 overflow-hidden">
-          <ContactsList
-            contacts={contacts}
-            setContacts={setContacts}
-            selectedContact={selectedContact}
-            onSelectContact={setSelectedContact}
-          />
-          <ChatPanel
-            contact={selectedContact}
-            onUpdateContact={(updatedContact) => {
-              setSelectedContact(updatedContact);
-              setContacts(prev => prev.map(c =>
-                c.phone === updatedContact.phone ? updatedContact : c
-              ));
-            }}
-          />
+          {/* En móviles: mostrar ContactsList O ChatPanel según si hay contacto seleccionado */}
+          {/* En desktop: mostrar ambos */}
+          <div className={`${selectedContact ? 'hidden md:flex' : 'flex'} flex-shrink-0`}>
+            <ContactsList
+              contacts={contacts}
+              setContacts={setContacts}
+              selectedContact={selectedContact}
+              onSelectContact={setSelectedContact}
+            />
+          </div>
+          <div className={`${selectedContact ? 'flex' : 'hidden md:flex'} flex-1`}>
+            <ChatPanel
+              contact={selectedContact}
+              onUpdateContact={(updatedContact) => {
+                setSelectedContact(updatedContact);
+                setContacts(prev => prev.map(c =>
+                  c.phone === updatedContact.phone ? updatedContact : c
+                ));
+              }}
+              onClose={() => setSelectedContact(null)}
+            />
+          </div>
         </div>
       )}
     </div>

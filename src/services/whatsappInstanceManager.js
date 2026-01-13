@@ -275,6 +275,23 @@ class WhatsAppInstanceManager {
             const isForwarded = contextInfo.isForwarded || contextInfo.forwardingScore > 0 || false;
             const forwardingScore = contextInfo.forwardingScore || 0;
 
+            // Detectar si es respuesta a otro mensaje (quoted message)
+            let quotedMsgInfo = null;
+            if (contextInfo.quotedMessage) {
+                const quotedBody = contextInfo.quotedMessage.conversation ||
+                                  contextInfo.quotedMessage.extendedTextMessage?.text ||
+                                  contextInfo.quotedMessage.imageMessage?.caption ||
+                                  contextInfo.quotedMessage.videoMessage?.caption ||
+                                  '[Mensaje sin texto]';
+
+                quotedMsgInfo = {
+                    body: quotedBody,
+                    participant: contextInfo.participant || null,
+                    messageId: contextInfo.stanzaId || null
+                };
+                console.log('💬 Mensaje es respuesta a:', quotedBody.substring(0, 50));
+            }
+
             // DEBUG: Imprimir estructura completa del mensaje para análisis
             if (mentionedJids.length > 0 || isForwarded) {
                 console.log('\n========== DEBUG MENSAJE ==========');
@@ -431,7 +448,7 @@ class WhatsAppInstanceManager {
             // Extraer messageId y participant para poder responder a este mensaje
             const messageId = msg.key.id;
             const participant = msg.key.participant || null;
-            await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant);
+            await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant, quotedMsgInfo);
 
             // Asignar grupo a este usuario de soporte si no está asignado
             await this.assignClientToUser(groupId, supportUserId, true, groupName, groupPicture);
@@ -801,11 +818,23 @@ class WhatsAppInstanceManager {
 
         // Agregar quoted message si se especifica (responder a un mensaje)
         if (options.quotedMessageId && options.quotedRemoteJid) {
+            // Construir un objeto de mensaje mínimo para Baileys
+            // Baileys necesita la estructura completa del mensaje para hacer quote
+            const quotedKey = {
+                remoteJid: options.quotedRemoteJid,
+                id: options.quotedMessageId,
+                fromMe: false
+            };
+
+            // Si hay participant, agregarlo (necesario para grupos)
+            if (options.quotedParticipant) {
+                quotedKey.participant = options.quotedParticipant;
+            }
+
             messagePayload.quoted = {
-                key: {
-                    remoteJid: options.quotedRemoteJid,
-                    id: options.quotedMessageId,
-                    participant: options.quotedParticipant || undefined
+                key: quotedKey,
+                message: {
+                    conversation: '' // Mensaje vacío para que Baileys pueda construir el quote
                 }
             };
             console.log('💬 Respondiendo a mensaje:', options.quotedMessageId);
@@ -1081,6 +1110,32 @@ class WhatsAppInstanceManager {
         });
 
         console.log('✅ [INSTANCE-MANAGER] Audio enviado exitosamente');
+        return result;
+    }
+
+    // Enviar video
+    async sendVideo(supportUserId, to, videoBuffer, caption = '') {
+        console.log('📤 [INSTANCE-MANAGER] sendVideo - userId:', supportUserId, 'to:', to);
+
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.sock) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@g.us`;
+        console.log('📤 [INSTANCE-MANAGER] Enviando video...');
+
+        const result = await instanceData.sock.sendMessage(chatId, {
+            video: videoBuffer,
+            caption: caption
+        });
+
+        console.log('✅ [INSTANCE-MANAGER] Video enviado exitosamente');
         return result;
     }
 

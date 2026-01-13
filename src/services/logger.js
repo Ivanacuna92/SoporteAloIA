@@ -6,7 +6,7 @@ class Logger {
         this.isProcessingQueue = false;
     }
 
-    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null, isForwarded = false, participant = null) {
+    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null, isForwarded = false, participant = null, quotedMsgInfo = null) {
         const timestamp = new Date();
         const logEntry = {
             timestamp: timestamp.toISOString(),
@@ -28,7 +28,12 @@ class Logger {
             media_filename: mediaInfo?.media_filename || null,
             media_caption: mediaInfo?.media_caption || null,
             // Información de mensaje reenviado
-            is_forwarded: isForwarded || false
+            is_forwarded: isForwarded || false,
+            // Información de mensaje citado (reply)
+            has_quoted_msg: quotedMsgInfo ? true : false,
+            quoted_msg_body: quotedMsgInfo?.body || null,
+            quoted_msg_participant: quotedMsgInfo?.participant || null,
+            quoted_msg_id: quotedMsgInfo?.messageId || null
         };
 
         // Solo guardar en BD y mostrar en consola
@@ -68,7 +73,12 @@ class Logger {
                 media_filename: logEntry.media_filename || null,
                 media_caption: logEntry.media_caption || null,
                 // Campo de mensaje reenviado
-                is_forwarded: logEntry.is_forwarded || false
+                is_forwarded: logEntry.is_forwarded || false,
+                // Campos de mensaje citado
+                has_quoted_msg: logEntry.has_quoted_msg || false,
+                quoted_msg_body: logEntry.quoted_msg_body || null,
+                quoted_msg_participant: logEntry.quoted_msg_participant || null,
+                quoted_msg_id: logEntry.quoted_msg_id || null
             });
             return result.insertId;
         } catch (error) {
@@ -312,7 +322,14 @@ class Logger {
                 mediaFilename: log.media_filename,
                 mediaCaption: log.media_caption,
                 // Campo de mensaje reenviado
-                isForwarded: log.is_forwarded || false
+                isForwarded: log.is_forwarded || false,
+                // Campos de mensaje citado
+                hasQuotedMsg: log.has_quoted_msg || false,
+                quotedMsg: log.has_quoted_msg ? {
+                    body: log.quoted_msg_body,
+                    participant: log.quoted_msg_participant,
+                    messageId: log.quoted_msg_id
+                } : null
             }));
         } catch (error) {
             console.error('Error obteniendo logs por teléfono de cliente:', error);

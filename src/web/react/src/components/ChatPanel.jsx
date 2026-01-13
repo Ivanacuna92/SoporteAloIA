@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, forwardMyMessage, deleteMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -118,7 +118,7 @@ function AudioPlayer({ src, isClient }) {
   );
 }
 
-function ChatPanel({ contact, onUpdateContact }) {
+function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
@@ -227,6 +227,14 @@ function ChatPanel({ contact, onUpdateContact }) {
 
       setMessage('');
 
+      // Resetear altura del textarea después de enviar
+      setTimeout(() => {
+        const textarea = document.querySelector('textarea[placeholder*="Ctrl+Enter"]');
+        if (textarea) {
+          textarea.style.height = '44px';
+        }
+      }, 0);
+
       const newMessage = {
         type: 'HUMAN',
         message: message,
@@ -250,8 +258,8 @@ function ChatPanel({ contact, onUpdateContact }) {
 
     setShowAttachMenu(false);
 
-    // Si es imagen o documento, mostrar modal para caption
-    if (type === 'image' || type === 'document') {
+    // Si es imagen, video o documento, mostrar modal para caption
+    if (type === 'image' || type === 'video' || type === 'document') {
       setCaptionData({ file, type, caption: '' });
       setShowCaptionModal(true);
     } else {
@@ -269,6 +277,8 @@ function ChatPanel({ contact, onUpdateContact }) {
     try {
       if (type === 'image') {
         await sendMyImage(contact.phone, file, caption);
+      } else if (type === 'video') {
+        await sendMyVideo(contact.phone, file, caption);
       } else if (type === 'document') {
         await sendMyDocument(contact.phone, file, caption);
       } else if (type === 'audio') {
@@ -292,7 +302,13 @@ function ChatPanel({ contact, onUpdateContact }) {
         messages: [...(contact.messages || []), newMessage]
       });
 
-      setSuccessMessage(`${type === 'image' ? 'Imagen' : type === 'document' ? 'Documento' : 'Audio'} enviado exitosamente`);
+      const typeNames = {
+        'image': 'Imagen',
+        'video': 'Video',
+        'document': 'Documento',
+        'audio': 'Audio'
+      };
+      setSuccessMessage(`${typeNames[type] || 'Archivo'} enviado exitosamente`);
       setShowSuccessModal(true);
     } catch (error) {
       setErrorMessage(`Error enviando ${type}: ${error.message}`);
@@ -311,6 +327,8 @@ function ChatPanel({ contact, onUpdateContact }) {
 
     if (type === 'image') {
       input.accept = 'image/*';
+    } else if (type === 'video') {
+      input.accept = 'video/*';
     } else if (type === 'document') {
       input.accept = '*/*';
     } else if (type === 'audio') {
@@ -424,13 +442,34 @@ function ChatPanel({ contact, onUpdateContact }) {
   const modeLabel = isSupport ? 'Soporte' : 'Humano';
 
   return (
-    <div className="flex-1 flex flex-col" style={{ background: '#FAFBFC' }}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#FAFBFC' }}>
       {/* Header moderno */}
-      <div className="bg-white px-6 py-4 flex items-center justify-between" style={{
+      <div className="bg-white px-3 md:px-6 py-3 md:py-4 flex items-center justify-between" style={{
         borderBottom: '1px solid #E8EBED',
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)'
       }}>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
+          {/* Botón atrás para móviles */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg transition-all flex-shrink-0"
+              style={{
+                background: '#F3F4F6',
+                color: '#6B7280'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#E5E7EB';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#F3F4F6';
+              }}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
           <div className="relative">
             {contact.isGroup && contact.groupPicture ? (
               <img
@@ -503,10 +542,10 @@ function ChatPanel({ contact, onUpdateContact }) {
         </div>
 
         {/* Botones de acción - Solo finalizar chat */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
           {isSupport && (
             <button
-              className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
+              className="px-2 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium transition-all whitespace-nowrap"
               style={{
                 background: 'rgba(249, 115, 22, 0.1)',
                 color: '#F97316',
@@ -531,13 +570,17 @@ function ChatPanel({ contact, onUpdateContact }) {
             </button>
           )}
           <button
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all"
+            className="px-2 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium text-white transition-all flex items-center gap-1 whitespace-nowrap"
             style={{ background: '#EF4444' }}
             onMouseEnter={(e) => e.target.style.background = '#DC2626'}
             onMouseLeave={(e) => e.target.style.background = '#EF4444'}
             onClick={() => setShowEndModal(true)}
           >
-            Finalizar Chat
+            <svg className="w-4 h-4 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span className="hidden md:inline">Finalizar Chat</span>
+            <span className="md:hidden">Finalizar</span>
           </button>
 
           {/* Botón de menú de opciones (3 puntos) */}
@@ -622,7 +665,7 @@ function ChatPanel({ contact, onUpdateContact }) {
       </div>
 
       {/* Área de mensajes */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-3" style={{ background: '#FAFBFC' }}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6 space-y-2 md:space-y-3" style={{ background: '#FAFBFC' }}>
         {contact.messages?.slice().reverse().map((msg, index) => {
           const isClient = msg.type === 'USER' || msg.type === 'CLIENTE' || msg.role === 'cliente';
           const isBotOrSupport = msg.type === 'BOT' || msg.type === 'SOPORTE' || msg.role === 'bot' || msg.role === 'soporte';
@@ -632,7 +675,6 @@ function ChatPanel({ contact, onUpdateContact }) {
           // Determinar el color según el tipo de mensaje específico
           const isMessageFromSupport = msg.type === 'SOPORTE' || msg.role === 'soporte' || (msg.type === 'HUMAN' && contact.mode === 'support');
           const isMessageFromHuman = msg.type === 'HUMAN' && contact.mode !== 'support';
-          const isMessageFromBot = msg.type === 'BOT';
 
           if (isSystem) {
             return (
@@ -663,9 +705,9 @@ function ChatPanel({ contact, onUpdateContact }) {
           return (
             <div
               key={index}
-              className={`flex ${isClient ? 'justify-start' : 'justify-end'} group`}
+              className={`flex ${isClient ? 'justify-start' : 'justify-end'} group w-full`}
             >
-              <div className={`max-w-xs lg:max-w-md px-3 py-2 relative ${
+              <div className={`max-w-[85%] md:max-w-xs lg:max-w-md px-3 py-2 relative ${
                 isClient ? 'bg-white text-gray-900' : 'text-white'
               }`}
               style={isClient ? {
@@ -788,7 +830,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                    msg.type === 'HUMAN' ? (contact.mode === 'support' ? 'Soporte' : 'Humano') :
                    msg.type === 'BOT' ? 'Bot' : 'Sistema'}
                 </div>
-                <div className="text-sm leading-relaxed pr-16">
+                <div className="text-sm leading-relaxed pr-16 break-words overflow-hidden">
                   {/* Mostrar imagen/video/documento si existe */}
                   {msg.hasMedia && msg.mediaType && (
                     <div className="mb-2">
@@ -797,12 +839,12 @@ function ChatPanel({ contact, onUpdateContact }) {
                           <img
                             src={msg.mediaUrl}
                             alt={msg.mediaCaption || 'Imagen'}
-                            className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            className="rounded-lg w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                               setSelectedMedia({ url: msg.mediaUrl, type: 'image', caption: msg.mediaCaption });
                               setShowMediaModal(true);
                             }}
-                            style={{ maxWidth: '300px' }}
+                            style={{ maxWidth: '100%' }}
                             onError={(e) => {
                               e.target.style.display = 'none';
                               e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
@@ -821,8 +863,8 @@ function ChatPanel({ contact, onUpdateContact }) {
                         msg.mediaUrl ? (
                           <video
                             controls
-                            className="rounded-lg max-w-full max-h-64 cursor-pointer"
-                            style={{ maxWidth: '300px' }}
+                            className="rounded-lg w-full max-h-64 cursor-pointer"
+                            style={{ maxWidth: '100%' }}
                             onClick={(e) => {
                               if (e.target.paused) {
                                 setSelectedMedia({ url: msg.mediaUrl, type: 'video', caption: msg.mediaCaption, mimetype: msg.mediaMimetype });
@@ -871,10 +913,22 @@ function ChatPanel({ contact, onUpdateContact }) {
                         <img
                           src={msg.mediaUrl}
                           alt="Sticker"
-                          className="max-w-full max-h-32 object-contain"
+                          className="w-auto max-h-32 object-contain"
                           style={{ maxWidth: '150px' }}
                         />
                       )}
+                    </div>
+                  )}
+
+                  {/* Mostrar mensaje citado si existe */}
+                  {msg.hasQuotedMsg && msg.quotedMsg && (
+                    <div className={`mb-2 p-2 rounded-lg border-l-4 ${isClient ? 'bg-gray-100 border-gray-400' : 'bg-white/10 border-white/40'}`}>
+                      <div className="text-[10px] font-semibold mb-1 opacity-80">
+                        {msg.quotedMsg.participant ? msg.quotedMsg.participant.split('@')[0] : 'Usuario'}
+                      </div>
+                      <div className="text-xs opacity-70 truncate" style={{ whiteSpace: 'pre-wrap' }}>
+                        {msg.quotedMsg.body || '[Mensaje sin texto]'}
+                      </div>
                     </div>
                   )}
 
@@ -903,7 +957,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                       {msg.message}
                     </ReactMarkdown>
                   ) : (
-                    msg.message
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{msg.message}</span>
                   ))}
                 </div>
                 <div className={`absolute bottom-1 right-2 text-[11px] flex items-center gap-1 ${isClient ? 'text-gray-500' : 'text-white/70'}`}>
@@ -944,19 +998,19 @@ function ChatPanel({ contact, onUpdateContact }) {
 
       {/* Input de mensaje o mensaje de grupo abandonado */}
       {contact.leftGroup ? (
-        <div className="bg-white px-6 py-4 flex items-center justify-center" style={{
+        <div className="bg-white px-3 md:px-6 py-3 md:py-4 flex items-center justify-center" style={{
           borderTop: '1px solid #E8EBED',
           boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
         }}>
           <div className="text-center py-2">
-            <p className="text-sm font-medium text-gray-500">Ya no puedes enviar mensajes a este grupo</p>
+            <p className="text-xs md:text-sm font-medium text-gray-500">Ya no puedes enviar mensajes a este grupo</p>
           </div>
         </div>
       ) : (
         <>
           {/* Indicador de mensaje citado */}
           {quotedMessage && (
-            <div className="bg-white px-6 py-3 flex items-center justify-between" style={{
+            <div className="bg-white px-3 md:px-6 py-3 flex items-center justify-between" style={{
               borderTop: '1px solid #E8EBED',
               background: 'rgba(253, 97, 68, 0.05)'
             }}>
@@ -983,7 +1037,7 @@ function ChatPanel({ contact, onUpdateContact }) {
             </div>
           )}
 
-          <div className="bg-white px-6 py-4 flex gap-3 relative" style={{
+          <div className="bg-white px-3 md:px-6 py-3 md:py-4 flex items-end gap-2 md:gap-3 relative" style={{
             borderTop: quotedMessage ? 'none' : '1px solid #E8EBED',
             boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
           }}>
@@ -992,10 +1046,12 @@ function ChatPanel({ contact, onUpdateContact }) {
             <button
               onClick={() => setShowAttachMenu(!showAttachMenu)}
               disabled={sendingMedia}
-              className="w-12 h-12 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+              className="rounded-xl flex items-center justify-center transition-all disabled:opacity-50 flex-shrink-0"
               style={{
                 background: showAttachMenu ? '#FD6144' : '#F3F4F6',
-                color: showAttachMenu ? 'white' : '#6B7280'
+                color: showAttachMenu ? 'white' : '#6B7280',
+                width: '44px',
+                height: '44px'
               }}
               onMouseEnter={(e) => {
                 if (!sendingMedia && !showAttachMenu) {
@@ -1039,6 +1095,23 @@ function ChatPanel({ contact, onUpdateContact }) {
                   </button>
 
                   <button
+                    onClick={() => handleAttachClick('video')}
+                    className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = '#F3F4F6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span>Enviar video</span>
+                  </button>
+
+                  <button
                     onClick={() => handleAttachClick('document')}
                     className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
                     style={{ color: '#6B7280' }}
@@ -1076,17 +1149,28 @@ function ChatPanel({ contact, onUpdateContact }) {
             )}
           </div>
 
-          <input
-            type="text"
+          <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Escribe un mensaje..."
+            onKeyDown={(e) => {
+              // Ctrl+Enter o Shift+Enter para enviar
+              if ((e.ctrlKey || e.shiftKey) && e.key === 'Enter') {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Escribe un mensaje... (Ctrl+Enter para enviar)"
             disabled={sending || sendingMedia}
-            className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
+            rows={1}
+            className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50 resize-none"
             style={{
               background: '#F3F4F6',
-              border: '1px solid transparent'
+              border: '1px solid transparent',
+              minHeight: '44px',
+              maxHeight: '100px',
+              overflowY: 'auto',
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#CBD5E0 transparent'
             }}
             onFocus={(e) => {
               if (!e.target.disabled) {
@@ -1100,13 +1184,28 @@ function ChatPanel({ contact, onUpdateContact }) {
               e.target.style.border = '1px solid transparent';
               e.target.style.boxShadow = 'none';
             }}
+            onInput={(e) => {
+              // Auto-ajustar altura del textarea según el contenido
+              e.target.style.height = 'auto';
+              const newHeight = Math.min(e.target.scrollHeight, 100);
+              e.target.style.height = newHeight + 'px';
+
+              // Si alcanzó el máximo, mostrar scroll
+              if (e.target.scrollHeight > 100) {
+                e.target.style.overflowY = 'auto';
+              } else {
+                e.target.style.overflowY = 'hidden';
+              }
+            }}
           />
           <button
             onClick={handleSend}
             disabled={sending || sendingMedia || !message.trim()}
-            className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 md:px-6 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0"
             style={{
-              background: '#FD6144'
+              background: '#FD6144',
+              minWidth: '70px',
+              height: '44px'
             }}
             onMouseEnter={(e) => {
               if (!e.target.disabled) {
@@ -1119,7 +1218,14 @@ function ChatPanel({ contact, onUpdateContact }) {
               }
             }}
           >
-            {sending ? '...' : sendingMedia ? 'Enviando...' : 'Enviar'}
+            {sending ? '...' : sendingMedia ? 'Enviando...' : (
+              <>
+                <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                <span className="hidden md:inline">Enviar</span>
+              </>
+            )}
           </button>
         </div>
         </>
