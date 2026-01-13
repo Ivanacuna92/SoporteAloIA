@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced } from '../services/api';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 
 // Componente de reproductor de audio personalizado estilo WhatsApp
 function AudioPlayer({ src, isClient }) {
@@ -934,28 +932,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
 
                   {/* Mostrar texto del mensaje (solo si existe) */}
                   {msg.message && msg.message.trim() !== '' && (isClient || isHumanOrBot ? (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-                        ul: ({children}) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                        ol: ({children}) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                        li: ({children}) => <li className="mb-1">{children}</li>,
-                        code: ({inline, children}) =>
-                          inline ?
-                            <code className={`${isClient ? 'bg-gray-200 text-gray-900' : 'bg-white/20 text-white'} px-1.5 py-0.5 rounded text-xs`}>{children}</code> :
-                            <pre className={`${isClient ? 'bg-gray-100 text-gray-900' : 'bg-white/10 text-white'} p-2 rounded overflow-x-auto my-2 text-xs`}><code>{children}</code></pre>,
-                        strong: ({children}) => <strong className="font-semibold">{children}</strong>,
-                        em: ({children}) => <em className="italic">{children}</em>,
-                        a: ({href, children}) => <a href={href} className="underline hover:opacity-80" target="_blank" rel="noopener noreferrer">{children}</a>,
-                        h1: ({children}) => <h1 className="text-base font-bold mb-2">{children}</h1>,
-                        h2: ({children}) => <h2 className="text-sm font-bold mb-2">{children}</h2>,
-                        h3: ({children}) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
-                        blockquote: ({children}) => <blockquote className={`border-l-2 ${isClient ? 'border-gray-400' : 'border-white/40'} pl-2 my-2 italic`}>{children}</blockquote>
-                      }}
-                    >
+                    <div style={{ whiteSpace: 'pre-wrap' }}>
                       {msg.message}
-                    </ReactMarkdown>
+                    </div>
                   ) : (
                     <span style={{ whiteSpace: 'pre-wrap' }}>{msg.message}</span>
                   ))}
