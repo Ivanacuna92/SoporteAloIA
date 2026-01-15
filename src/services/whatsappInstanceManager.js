@@ -242,11 +242,63 @@ class WhatsAppInstanceManager {
             const instanceData = this.instances.get(supportUserId);
             if (!instanceData || !instanceData.sock) return;
 
-            // Ignorar mensajes propios
-            if (msg.key.fromMe) return;
-
             const from = msg.key.remoteJid;
             const isGroup = from.endsWith('@g.us');
+
+            // Si es un mensaje propio (fromMe), registrarlo como mensaje de soporte
+            if (msg.key.fromMe) {
+                // Solo procesar mensajes de grupos
+                if (!isGroup) {
+                    console.log('📛 Mensaje propio en chat privado ignorado - Solo grupos');
+                    return;
+                }
+
+                // Extraer el texto del mensaje
+                const conversation = msg.message.conversation ||
+                                   msg.message.extendedTextMessage?.text ||
+                                   msg.message.imageMessage?.caption ||
+                                   msg.message.videoMessage?.caption ||
+                                   msg.message.documentMessage?.caption ||
+                                   '';
+
+                // Detectar si el mensaje tiene medios
+                const hasMedia = !!(
+                    msg.message.imageMessage ||
+                    msg.message.videoMessage ||
+                    msg.message.documentMessage ||
+                    msg.message.audioMessage ||
+                    msg.message.stickerMessage
+                );
+
+                // Si no hay conversación ni medios, ignorar
+                if (!conversation && !hasMedia) return;
+
+                const groupId = from.replace('@g.us', '');
+                const messageId = msg.key.id;
+
+                // Procesar medios si existen
+                let mediaInfo = null;
+                if (hasMedia) {
+                    mediaInfo = await this.downloadAndSaveMedia(msg, groupId);
+                }
+
+                // Verificar que el grupo esté asignado a este usuario
+                const existingAssignment = await this.getClientAssignment(groupId);
+                if (!existingAssignment || existingAssignment.support_user_id !== supportUserId) {
+                    console.log(`⏭️  Mensaje propio ignorado: Grupo ${groupId} no asignado o asignado a otro usuario`);
+                    return;
+                }
+
+                // Obtener nombre del usuario de soporte
+                const user = await database.findOne('support_users', 'id = ?', [supportUserId]);
+                const userName = user ? user.name : 'Soporte';
+
+                // Registrar mensaje como enviado por soporte
+                await logger.log('soporte', conversation || '', groupId, userName, true, null, supportUserId, messageId, mediaInfo);
+
+                console.log(`✅ Mensaje propio registrado para grupo ${groupId}`);
+                return;
+            }
 
             // Solo aceptar mensajes de grupos - Ignorar mensajes privados/directos
             if (!isGroup) {
