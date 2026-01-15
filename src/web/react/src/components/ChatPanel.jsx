@@ -212,14 +212,22 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     try {
       // Si hay un mensaje citado, usar sendMessageAdvanced
       if (quotedMessage) {
+        console.log('📨 Enviando mensaje con reply...');
+        console.log('📨 quotedMessage:', quotedMessage);
         const options = {
           quotedMessageId: quotedMessage.messageId,
           quotedRemoteJid: `${contact.phone}@g.us`,
           quotedParticipant: quotedMessage.participant
         };
+        console.log('📨 options:', options);
+        console.log('📨 contact.phone:', contact.phone);
+        console.log('📨 message:', message);
+
         await sendMessageAdvanced(contact.phone, message, options);
+        console.log('✅ Mensaje con reply enviado correctamente');
         setQuotedMessage(null); // Limpiar mensaje citado después de enviar
       } else {
+        console.log('📨 Enviando mensaje simple...');
         await sendMyMessage(contact.phone, message); // Sin parámetro isGroup
       }
 
@@ -380,8 +388,20 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   };
 
   const handleReplyMessage = (msg) => {
+    console.log('🔍 DEBUG handleReplyMessage - msg:', msg);
+    console.log('🔍 messageId:', msg.messageId);
+    console.log('🔍 participant:', msg.participant);
+    console.log('🔍 sender:', msg.sender);
+
     setMessageMenuOpen(null);
     setQuotedMessage({
+      messageId: msg.messageId,
+      message: msg.message,
+      userName: msg.userName,
+      participant: msg.participant || msg.sender
+    });
+
+    console.log('✅ QuotedMessage set:', {
       messageId: msg.messageId,
       message: msg.message,
       userName: msg.userName,
