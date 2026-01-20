@@ -241,16 +241,8 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
         }
       }, 0);
 
-      const newMessage = {
-        type: 'HUMAN',
-        message: message,
-        timestamp: new Date().toISOString()
-      };
-
-      onUpdateContact({
-        ...contact,
-        messages: [...(contact.messages || []), newMessage]
-      });
+      // El mensaje aparecerá automáticamente cuando el servidor actualice los contactos (cada 5 segundos)
+      // No es necesario agregarlo manualmente aquí para evitar duplicación
     } catch (error) {
       setErrorMessage('Error enviando mensaje: ' + error.message);
       setShowErrorModal(true);
@@ -291,22 +283,8 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
         await sendMyAudio(contact.phone, file, false);
       }
 
-      // Agregar mensaje visual al chat con preview local
-      const newMessage = {
-        type: 'HUMAN',
-        message: caption || '',
-        timestamp: new Date().toISOString(),
-        hasMedia: true,
-        mediaType: type,
-        mediaUrl: localUrl,
-        mediaMimetype: file.type,
-        mediaFilename: file.name
-      };
-
-      onUpdateContact({
-        ...contact,
-        messages: [...(contact.messages || []), newMessage]
-      });
+      // El mensaje con archivo aparecerá automáticamente cuando el servidor actualice los contactos
+      // No agregarlo manualmente para evitar duplicación
 
       const typeNames = {
         'image': 'Imagen',
@@ -414,20 +392,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     
     try {
       await endConversation(contact.phone);
-      
-      // Agregar mensaje de sistema a la conversación
-      const systemMessage = {
-        type: 'SYSTEM',
-        message: '⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación.',
-        timestamp: new Date().toISOString()
-      };
-      
-      onUpdateContact({
-        ...contact,
-        messages: [...(contact.messages || []), systemMessage],
-        isHumanMode: false
-      });
-      
+
+      // El mensaje de sistema aparecerá automáticamente cuando el servidor actualice los contactos
+      // No agregarlo manualmente para evitar duplicación
+
       setShowEndModal(false);
       setEndingConversation(false);
     } catch (error) {
@@ -1288,16 +1256,8 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
 
                     await sendMyMessage(contact.phone, presentationMessage); // Sin parámetro isGroup
 
-                    const newMessage = {
-                      type: 'HUMAN',
-                      message: presentationMessage,
-                      timestamp: new Date().toISOString()
-                    };
-
-                    onUpdateContact({
-                      ...contact,
-                      messages: [...(contact.messages || []), newMessage]
-                    });
+                    // El mensaje de presentación aparecerá automáticamente cuando el servidor actualice los contactos
+                    // No agregarlo manualmente para evitar duplicación
                   } catch (error) {
                     setErrorMessage('Error al tomar control: ' + (error.message || 'Error desconocido'));
                     setShowErrorModal(true);
