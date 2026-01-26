@@ -350,11 +350,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             console.log('✅ [SEND-MESSAGE] Mensaje enviado exitosamente');
 
-            // Registrar el mensaje (isGroup siempre true)
-            const logger = require('../services/logger');
-            await logger.log('soporte', message, phone, req.user.name, true, req.user.id);
-
-            console.log('✅ [SEND-MESSAGE] Mensaje registrado en logs');
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
+            // Esto evita mensajes duplicados
 
             res.json({
                 success: true,
@@ -927,9 +924,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.sendMessage(req.user.id, chatId, message, options);
 
-            // Registrar el mensaje
-            const logger = require('../services/logger');
-            await logger.log('soporte', message, phone, req.user.name, true, req.user.id);
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
+            // Esto evita mensajes duplicados
 
             res.json({
                 success: true,
