@@ -16,6 +16,103 @@ const fs = require('fs').promises;
 class WhatsAppInstanceManager {
     constructor() {
         this.instances = new Map(); // Map<supportUserId, instanceData>
+        this._profilePicCache = new Map(); // Map<jid, { url, ts }>
+        this._profilePicTableReady = false;
+        this._msgCache = new Map(); // Cache de WAMessages para forward - Map<messageId, WAMessage>
+        this._reactionsTableReady = false;
+    }
+
+    // Crear tabla de reacciones si no existe
+    async _ensureReactionsTable() {
+        if (this._reactionsTableReady) return;
+        try {
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS message_reactions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    message_id VARCHAR(255) NOT NULL,
+                    phone VARCHAR(100) NOT NULL,
+                    emoji VARCHAR(20) NOT NULL,
+                    participant VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_reaction (message_id, participant)
+                )
+            `);
+            this._reactionsTableReady = true;
+        } catch (e) {
+            console.error('Error creando tabla message_reactions:', e.message);
+        }
+    }
+
+    // Crear tabla de fotos de perfil si no existe
+    async _ensureProfilePicTable() {
+        if (this._profilePicTableReady) return;
+        try {
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS participant_profiles (
+                    jid VARCHAR(100) PRIMARY KEY,
+                    display_name VARCHAR(255),
+                    profile_picture VARCHAR(512),
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_updated (updated_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            this._profilePicTableReady = true;
+        } catch (e) {
+            console.error('Error creando tabla participant_profiles:', e.message);
+        }
+    }
+
+    // Obtener foto de perfil de un participante (con cache de 24h)
+    async getParticipantProfilePic(sock, jid, displayName) {
+        if (!jid) return null;
+        await this._ensureProfilePicTable();
+
+        // Cache en memoria (5 min)
+        const cached = this._profilePicCache.get(jid);
+        if (cached && (Date.now() - cached.ts) < 5 * 60 * 1000) {
+            return cached.url;
+        }
+
+        // Buscar en BD (cache de 24h)
+        try {
+            const [rows] = await database.query(
+                'SELECT profile_picture, updated_at FROM participant_profiles WHERE jid = ?', [jid]
+            );
+            if (rows && rows.length > 0 && rows[0].profile_picture) {
+                const age = Date.now() - new Date(rows[0].updated_at).getTime();
+                if (age < 24 * 60 * 60 * 1000) {
+                    this._profilePicCache.set(jid, { url: rows[0].profile_picture, ts: Date.now() });
+                    return rows[0].profile_picture;
+                }
+            }
+        } catch (e) { /* continuar a descargar */ }
+
+        // Descargar de WhatsApp
+        try {
+            const picUrl = await this.downloadAndSaveProfilePicture(sock, jid, 'participant');
+            if (picUrl) {
+                await database.query(
+                    `INSERT INTO participant_profiles (jid, display_name, profile_picture) VALUES (?, ?, ?)
+                     ON DUPLICATE KEY UPDATE profile_picture = VALUES(profile_picture), display_name = VALUES(display_name)`,
+                    [jid, displayName || null, picUrl]
+                );
+                this._profilePicCache.set(jid, { url: picUrl, ts: Date.now() });
+                return picUrl;
+            }
+        } catch (e) {
+            // Sin foto disponible
+        }
+
+        // Guardar null para no reintentar por 24h
+        try {
+            await database.query(
+                `INSERT INTO participant_profiles (jid, display_name, profile_picture) VALUES (?, ?, NULL)
+                 ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), updated_at = NOW()`,
+                [jid, displayName || null]
+            );
+        } catch (e) { /* ignorar */ }
+        this._profilePicCache.set(jid, { url: null, ts: Date.now() });
+        return null;
     }
 
     // Obtener todas las instancias activas
@@ -70,12 +167,24 @@ class WhatsAppInstanceManager {
                 browser: ['Chrome (Linux)', '', ''],
                 generateHighQualityLinkPreview: false,
                 syncFullHistory: false,
-                getMessage: async () => ({ conversation: 'No disponible' }),
+                getMessage: async (key) => {
+                    try {
+                        const db = require('./database');
+                        const rows = await db.query(
+                            'SELECT message FROM conversation_logs WHERE message_id = ? LIMIT 1',
+                            [key.id]
+                        );
+                        if (rows && rows.length > 0 && rows[0].message) {
+                            return { conversation: rows[0].message };
+                        }
+                    } catch (e) {}
+                    return { conversation: '' };
+                },
                 defaultQueryTimeoutMs: undefined,
                 connectTimeoutMs: 60000,
                 keepAliveIntervalMs: 30000,
                 qrTimeout: undefined,
-                markOnlineOnConnect: false,
+                markOnlineOnConnect: true,
                 msgRetryCounterCache: new Map(),
                 retryRequestDelayMs: 250,
                 maxMsgRetryCount: 5
@@ -106,7 +215,73 @@ class WhatsAppInstanceManager {
 
             // Manejar actualizaciones de estado de mensajes
             sock.ev.on('messages.update', async (updates) => {
+                console.log('📊 [MSG-UPDATE] Recibido:', updates.length, 'updates');
                 await this.handleMessagesUpdate(supportUserId, updates);
+            });
+
+            // Recibos de lectura/entrega (importante para grupos)
+            sock.ev.on('message-receipt.update', async (updates) => {
+                console.log('📬 [RECEIPT-HANDLER] Recibidos:', updates.length, 'receipts');
+                for (const update of updates) {
+                    try {
+                        const messageId = update.key.id;
+                        const receipt = update.receipt;
+                        const remoteJid = update.key.remoteJid;
+                        const userJid = receipt.userJid;
+                        // En Baileys 6, el receipt NO tiene .type
+                        // Tiene .readTimestamp (leído) o .receiptTimestamp (entregado)
+                        let receiptType = receipt.readTimestamp ? 'read' : 'delivered';
+                        console.log('📬 [RECEIPT]', messageId, 'user:', userJid, 'status:', receiptType, 'data:', JSON.stringify(receipt));
+
+                        // Guardar receipt individual en BD
+                        if (userJid && remoteJid?.endsWith('@g.us')) {
+                            const ts = receipt.readTimestamp || receipt.receiptTimestamp;
+                            const receiptTs = ts ? new Date(ts * 1000) : new Date();
+                            try {
+                                await database.query(
+                                    `INSERT INTO message_receipts (message_id, group_jid, participant_jid, receipt_type, receipt_timestamp)
+                                     VALUES (?, ?, ?, ?, ?)
+                                     ON DUPLICATE KEY UPDATE receipt_timestamp = VALUES(receipt_timestamp)`,
+                                    [messageId, remoteJid, userJid, receiptType, receiptTs]
+                                );
+                                if (receiptType === 'read') {
+                                    await database.query(
+                                        `INSERT IGNORE INTO message_receipts (message_id, group_jid, participant_jid, receipt_type, receipt_timestamp)
+                                         VALUES (?, ?, ?, 'delivered', ?)`,
+                                        [messageId, remoteJid, userJid, receiptTs]
+                                    );
+                                }
+                            } catch (e) {}
+                        }
+
+                        // Determinar status agregado para conversation_logs
+                        let status = receiptType;
+                        if (receiptType === 'delivered') {
+                            // Si ya estaba en delivered y llega otro receipt, podría ser read
+                            try {
+                                const existing = await database.query('SELECT status FROM conversation_logs WHERE message_id = ? LIMIT 1', [messageId]);
+                                if (existing.length > 0 && existing[0].status === 'delivered') {
+                                    // Revisar si hay algun receipt de tipo read en la tabla
+                                    const readReceipts = await database.query(
+                                        'SELECT COUNT(*) as cnt FROM message_receipts WHERE message_id = ? AND receipt_type = ?',
+                                        [messageId, 'read']
+                                    );
+                                    if (readReceipts[0]?.cnt > 0) status = 'read';
+                                }
+                            } catch (e) {}
+                        }
+
+                        if (status && messageId) {
+                            await logger.updateMessageStatus(messageId, status);
+                            const groupId = remoteJid?.replace('@g.us', '');
+                            if (global.io && groupId) {
+                                global.io.emit('new-message', { phone: groupId, statusUpdate: true });
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Error procesando receipt:', e.message);
+                    }
+                }
             });
 
             // Manejar mensajes entrantes
@@ -185,6 +360,55 @@ class WhatsAppInstanceManager {
         } else if (connection === 'open') {
             console.log(`✅ WhatsApp conectado para usuario ${supportUserId}`);
 
+            // Registrar listener de receipts al conectar
+            if (!instanceData._receiptListenerAdded) {
+                instanceData._receiptListenerAdded = true;
+                instanceData.sock.ev.on('message-receipt.update', async (updates) => {
+                    console.log('📬 [RECEIPT-HANDLER] Recibidos:', updates.length);
+                    for (const update of updates) {
+                        try {
+                            const messageId = update.key.id;
+                            const receipt = update.receipt;
+                            const remoteJid = update.key.remoteJid;
+                            const userJid = receipt.userJid;
+                            const receiptType = receipt.readTimestamp ? 'read' : 'delivered';
+                            const ts = receipt.readTimestamp || receipt.receiptTimestamp;
+                            const receiptTs = ts ? new Date(ts * 1000) : new Date();
+
+                            console.log('📬 [RECEIPT]', messageId, userJid, receiptType);
+
+                            // Guardar receipt individual
+                            if (userJid && remoteJid?.endsWith('@g.us')) {
+                                try {
+                                    await database.query(
+                                        `INSERT INTO message_receipts (message_id, group_jid, participant_jid, receipt_type, receipt_timestamp)
+                                         VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE receipt_timestamp = VALUES(receipt_timestamp)`,
+                                        [messageId, remoteJid, userJid, receiptType, receiptTs]
+                                    );
+                                    if (receiptType === 'read') {
+                                        await database.query(
+                                            `INSERT IGNORE INTO message_receipts (message_id, group_jid, participant_jid, receipt_type, receipt_timestamp)
+                                             VALUES (?, ?, ?, 'delivered', ?)`,
+                                            [messageId, remoteJid, userJid, receiptTs]
+                                        );
+                                    }
+                                } catch (e) {}
+                            }
+
+                            // Actualizar status agregado
+                            await logger.updateMessageStatus(messageId, receiptType);
+                            const groupId = remoteJid?.replace('@g.us', '');
+                            if (global.io && groupId) {
+                                global.io.emit('new-message', { phone: groupId, statusUpdate: true });
+                            }
+                        } catch (e) {
+                            console.log('Error receipt:', e.message);
+                        }
+                    }
+                });
+                console.log('✅ Receipt listener registrado');
+            }
+
             instanceData.status = 'connected';
             instanceData.qr = null;
             instanceData.reconnectAttempts = 0;
@@ -213,19 +437,46 @@ class WhatsAppInstanceManager {
                 const messageId = update.key.id;
                 const userId = update.key.remoteJid?.replace('@s.whatsapp.net', '');
 
-                let status = null;
+                console.log('📊 [MSG-UPDATE]', messageId, 'update:', JSON.stringify(update.update).substring(0, 200));
 
-                if (update.update.status === 4) {
+                let status = null;
+                const s = update.update.status;
+
+                if (s === 4 || s === 'READ' || s === 'read') {
                     status = 'read';
-                } else if (update.update.status === 2) {
+                } else if (s === 3 || s === 2 || s === 'DELIVERY_ACK' || s === 'delivered') {
                     status = 'delivered';
-                } else if (update.update.status === 1) {
+                } else if (s === 1 || s === 'SERVER_ACK' || s === 'sent') {
                     status = 'sent';
                 }
 
                 if (status && messageId) {
                     await logger.updateMessageStatus(messageId, status);
-                    console.log(`✅ Estado actualizado (Usuario ${supportUserId}): ${messageId} -> ${status}`);
+                    const groupId = update.key.remoteJid?.replace('@g.us', '');
+                    if (global.io && groupId) {
+                        global.io.emit('new-message', { phone: groupId, statusUpdate: true });
+                    }
+                }
+
+                // Detectar mensaje editado
+                const editedMsg = update.update?.message?.editedMessage?.message;
+                if (editedMsg && messageId) {
+                    const newText = editedMsg.conversation ||
+                                   editedMsg.extendedTextMessage?.text || '';
+                    if (newText) {
+                        try {
+                            await database.query(
+                                'UPDATE conversation_logs SET message = ?, is_edited = 1 WHERE message_id = ?',
+                                [newText, messageId]
+                            );
+                            const groupId = update.key.remoteJid?.replace('@g.us', '');
+                            if (global.io) {
+                                global.io.emit('new-message', { phone: groupId, edited: true });
+                            }
+                        } catch (e) {
+                            console.log('Error actualizando mensaje editado:', e.message);
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Error actualizando estado de mensaje:', error);
@@ -238,6 +489,57 @@ class WhatsAppInstanceManager {
         try {
             const msg = m.messages[0];
             if (!msg.message) return;
+
+            // Detectar reacciones
+            if (msg.message.reactionMessage) {
+                const reaction = msg.message.reactionMessage;
+                const targetId = reaction.key?.id;
+                const emoji = reaction.text || '';
+                const from = msg.key.remoteJid;
+                const groupId = from?.replace('@g.us', '');
+                const participant = msg.key.participant || msg.key.remoteJid;
+
+                // Persistir reacción en DB
+                try {
+                    await this._ensureReactionsTable();
+                    if (emoji) {
+                        await database.query(
+                            `INSERT INTO message_reactions (message_id, phone, emoji, participant)
+                             VALUES (?, ?, ?, ?)
+                             ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`,
+                            [targetId, groupId, emoji, participant]
+                        );
+                    } else {
+                        await database.query(
+                            `DELETE FROM message_reactions WHERE message_id = ? AND participant = ?`,
+                            [targetId, participant]
+                        );
+                    }
+                } catch (e) {
+                    console.error('Error guardando reacción en DB:', e.message);
+                }
+
+                if (global.io && groupId) {
+                    global.io.emit('reaction', {
+                        phone: groupId,
+                        messageId: targetId,
+                        emoji: emoji,
+                        participant: participant,
+                        fromMe: msg.key.fromMe
+                    });
+                }
+                return; // Las reacciones no se loguean como mensajes
+            }
+
+            // Cachear WAMessage para forward nativo
+            if (msg.key.id) {
+                this._msgCache.set(msg.key.id, msg);
+                // Limitar cache a 500 mensajes
+                if (this._msgCache.size > 500) {
+                    const firstKey = this._msgCache.keys().next().value;
+                    this._msgCache.delete(firstKey);
+                }
+            }
 
             const instanceData = this.instances.get(supportUserId);
             if (!instanceData || !instanceData.sock) return;
@@ -293,8 +595,34 @@ class WhatsAppInstanceManager {
                 const user = await database.findOne('support_users', 'id = ?', [supportUserId]);
                 const userName = user ? user.name : 'Soporte';
 
+                // Detectar si es respuesta a otro mensaje
+                const contextInfo = msg.message.extendedTextMessage?.contextInfo ||
+                                   msg.message.imageMessage?.contextInfo ||
+                                   msg.message.videoMessage?.contextInfo ||
+                                   msg.message.documentMessage?.contextInfo ||
+                                   msg.message.audioMessage?.contextInfo || {};
+                let quotedMsgInfo = null;
+                if (contextInfo.quotedMessage) {
+                    const quotedBody = contextInfo.quotedMessage.conversation ||
+                                      contextInfo.quotedMessage.extendedTextMessage?.text ||
+                                      '[Mensaje sin texto]';
+                    quotedMsgInfo = {
+                        body: quotedBody,
+                        participant: contextInfo.participant || null,
+                        messageId: contextInfo.stanzaId || null
+                    };
+                }
+
+                // Detectar si es reenviado
+                const isForwarded = !!(contextInfo.isForwarded || contextInfo.forwardingScore > 0);
+
                 // Registrar mensaje como enviado por soporte
-                await logger.log('soporte', conversation || '', groupId, userName, true, null, supportUserId, messageId, mediaInfo);
+                await logger.log('soporte', conversation || '', groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, null, quotedMsgInfo);
+
+                // Emitir evento en tiempo real
+                if (global.io) {
+                    global.io.emit('new-message', { phone: groupId, userName, message: conversation || '' });
+                }
 
                 console.log(`✅ Mensaje propio registrado para grupo ${groupId}`);
                 return;
@@ -379,39 +707,37 @@ class WhatsAppInstanceManager {
                     }
                 }
 
-                // Intentar reemplazar menciones en el texto usando múltiples estrategias
+                // Reemplazar menciones en el texto
                 if (conversation && mentionsInfo.length > 0) {
+                    // Clonar lista de menciones para ir consumiéndolas en orden
+                    const remainingMentions = [...mentionsInfo];
+
                     for (const mention of mentionsInfo) {
                         let replaced = false;
 
-                        // Estrategia 1: Buscar con número completo
-                        const fullNumberPattern = new RegExp(`@${mention.phoneNumber.replace(/\+/g, '\\+')}`, 'g');
+                        // Estrategia 1: Buscar @numero completo
+                        const fullNumberPattern = new RegExp(`@${mention.phoneNumber.replace(/[+]/g, '\\+')}`, 'g');
                         if (conversation.includes(`@${mention.phoneNumber}`)) {
                             conversation = conversation.replace(fullNumberPattern, `@${mention.name}`);
                             replaced = true;
                             console.log(`✅ Reemplazo exitoso (número completo): @${mention.phoneNumber} → @${mention.name}`);
                         }
 
-                        // Estrategia 2: Buscar con últimos 10 dígitos
+                        // Estrategia 2: Buscar @ultimos10digitos
                         if (!replaced && mention.phoneNumber.length >= 10) {
                             const last10 = mention.phoneNumber.slice(-10);
                             if (conversation.includes(`@${last10}`)) {
-                                const shortPattern = new RegExp(`@${last10}`, 'g');
-                                conversation = conversation.replace(shortPattern, `@${mention.name}`);
+                                conversation = conversation.replace(new RegExp(`@${last10}`, 'g'), `@${mention.name}`);
                                 replaced = true;
                                 console.log(`✅ Reemplazo exitoso (últimos 10): @${last10} → @${mention.name}`);
                             }
                         }
 
-                        // Estrategia 3: Buscar cualquier secuencia numérica que empiece con @ en el texto
+                        // Estrategia 3: Buscar @numero parcial
                         if (!replaced) {
-                            // Buscar todos los @número en el texto
-                            const mentionPattern = /@(\d+)/g;
-                            const matches = [...conversation.matchAll(mentionPattern)];
-
+                            const matches = [...conversation.matchAll(/@(\d+)/g)];
                             for (const match of matches) {
                                 const foundNumber = match[1];
-                                // Verificar si el número encontrado está contenido en el número del contacto o viceversa
                                 if (mention.phoneNumber.includes(foundNumber) || foundNumber.includes(mention.phoneNumber)) {
                                     conversation = conversation.replace(`@${foundNumber}`, `@${mention.name}`);
                                     replaced = true;
@@ -421,22 +747,26 @@ class WhatsAppInstanceManager {
                             }
                         }
 
-                        if (!replaced) {
+                        if (replaced) {
+                            remainingMentions.shift();
+                        }
+                    }
+
+                    // Estrategia 4: Reemplazar @@lid secuencialmente con las menciones restantes
+                    // WhatsApp con LIDs envía el texto como "@@lid" literal para cada mención
+                    for (const mention of remainingMentions) {
+                        if (conversation.includes('@@lid')) {
+                            conversation = conversation.replace('@@lid', `@${mention.name}`);
+                            console.log(`✅ Reemplazo exitoso (@@lid): @@lid → @${mention.name}`);
+                        } else {
                             console.log(`⚠️  No se pudo reemplazar mención de ${mention.name} en el texto`);
                         }
                     }
-                }
 
-                // Si hay menciones detectadas pero no pudimos reemplazarlas en el texto,
-                // agregar la información al final del mensaje
-                if (mentionsInfo.length > 0 && conversation) {
-                    const mentionPattern = /@(\d+)/g;
-                    const unresolvedMentions = [...conversation.matchAll(mentionPattern)];
-
-                    if (unresolvedMentions.length > 0) {
-                        const mentionsList = mentionsInfo.map(m => `@${m.name}`).join(', ');
-                        conversation += `\n\n[Menciones: ${mentionsList}]`;
-                        console.log(`ℹ️  Agregada información de menciones al final del mensaje`);
+                    // Si aún quedan @@lid sin resolver, limpiarlos
+                    if (conversation.includes('@@lid')) {
+                        conversation = conversation.replace(/@@lid/g, '@usuario');
+                        console.log(`⚠️  Quedaron @@lid sin resolver, reemplazados con @usuario`);
                     }
                 }
 
@@ -466,6 +796,32 @@ class WhatsAppInstanceManager {
                 const groupMetadata = await instanceData.sock.groupMetadata(from);
                 groupName = groupMetadata.subject || groupId;
 
+                // Cachear participantes del grupo
+                try {
+                    for (const p of groupMetadata.participants) {
+                        const pJid = p.lid || p.id;
+                        const phoneJid = p.id.endsWith('@s.whatsapp.net') ? p.id : (p.lid ? p.id : null);
+                        await database.query(
+                            `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
+                             VALUES (?, ?, ?, ?, ?)
+                             ON DUPLICATE KEY UPDATE phone_jid = COALESCE(VALUES(phone_jid), phone_jid),
+                                                      display_name = COALESCE(VALUES(display_name), display_name),
+                                                      admin_role = VALUES(admin_role)`,
+                            [from, pJid, phoneJid, p.notify || p.verifiedName || null, p.admin || null]
+                        );
+                        // También guardar mapeo inverso si tiene LID y phone
+                        if (p.lid && p.id.endsWith('@s.whatsapp.net')) {
+                            await database.query(
+                                `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
+                                 VALUES (?, ?, ?, ?, ?)
+                                 ON DUPLICATE KEY UPDATE phone_jid = COALESCE(VALUES(phone_jid), phone_jid),
+                                                          display_name = COALESCE(VALUES(display_name), display_name)`,
+                                [from, p.lid, p.id, p.notify || p.verifiedName || null, p.admin || null]
+                            );
+                        }
+                    }
+                } catch (e) {}
+
                 // Descargar y guardar imagen de perfil del grupo localmente
                 try {
                     groupPicture = await this.downloadAndSaveProfilePicture(instanceData.sock, from, 'group');
@@ -477,6 +833,26 @@ class WhatsAppInstanceManager {
             }
 
             const userName = msg.pushName || participantId || 'Usuario desconocido';
+
+            // Actualizar cache de participante con nombre
+            if (msg.key.participant && userName !== 'Usuario desconocido') {
+                try {
+                    await database.query(
+                        `INSERT INTO group_participants (group_jid, participant_jid, display_name)
+                         VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE display_name = COALESCE(VALUES(display_name), display_name)`,
+                        [from, msg.key.participant, userName]
+                    );
+                } catch (e) {}
+            }
+
+            // Obtener foto de perfil del participante (async, no bloquea)
+            let participantPic = null;
+            const participantJid = msg.key.participant || null;
+            if (participantJid) {
+                try {
+                    participantPic = await this.getParticipantProfilePic(instanceData.sock, participantJid, userName);
+                } catch (e) { /* silenciar */ }
+            }
 
             // VERIFICAR SI EL GRUPO ESTÁ ASIGNADO A OTRO USUARIO DE SOPORTE
             const existingAssignment = await this.getClientAssignment(groupId);
@@ -501,6 +877,22 @@ class WhatsAppInstanceManager {
             const messageId = msg.key.id;
             const participant = msg.key.participant || null;
             await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant, quotedMsgInfo);
+
+            // Emitir evento en tiempo real via WebSocket
+            if (global.io) {
+                global.io.emit('new-message', {
+                    phone: groupId,
+                    groupName,
+                    userName,
+                    message: messageText,
+                    participant,
+                    participantPic,
+                    messageId,
+                    timestamp: new Date().toISOString(),
+                    hasMedia: !!mediaInfo?.has_media,
+                    mediaType: mediaInfo?.media_type || null
+                });
+            }
 
             // Asignar grupo a este usuario de soporte si no está asignado
             await this.assignClientToUser(groupId, supportUserId, true, groupName, groupPicture);
@@ -867,38 +1259,53 @@ class WhatsAppInstanceManager {
 
         // Construir el objeto del mensaje
         const messagePayload = { text: message };
+        const sendOptions = {};
 
         // Agregar quoted message si se especifica (responder a un mensaje)
         if (options.quotedMessageId && options.quotedRemoteJid) {
-            // Construir un objeto de mensaje mínimo para Baileys
-            // Baileys necesita la estructura completa del mensaje para hacer quote
+            // Buscar el mensaje original en la BD para obtener texto y rol
+            let quotedText = '';
+            let isFromMe = false;
+            try {
+                const database = require('./database');
+                const origMsg = await database.query(
+                    'SELECT message, role FROM conversation_logs WHERE message_id = ? LIMIT 1',
+                    [options.quotedMessageId]
+                );
+                if (origMsg.length > 0) {
+                    quotedText = origMsg[0].message || '';
+                    isFromMe = origMsg[0].role === 'soporte' || origMsg[0].role === 'bot';
+                }
+            } catch (e) {
+                console.log('No se pudo obtener mensaje original:', e.message);
+            }
+
             const quotedKey = {
                 remoteJid: options.quotedRemoteJid,
                 id: options.quotedMessageId,
-                fromMe: false
+                fromMe: isFromMe
             };
 
-            // Si hay participant, agregarlo (necesario para grupos)
             if (options.quotedParticipant) {
                 quotedKey.participant = options.quotedParticipant;
             }
 
-            messagePayload.quoted = {
+            // quoted va como tercer parámetro de sendMessage, no dentro del content
+            sendOptions.quoted = {
                 key: quotedKey,
                 message: {
-                    conversation: '' // Mensaje vacío para que Baileys pueda construir el quote
+                    conversation: quotedText
                 }
             };
-            console.log('💬 Respondiendo a mensaje:', options.quotedMessageId);
+            console.log('💬 Respondiendo a mensaje:', options.quotedMessageId, '| fromMe:', isFromMe);
         }
 
         // Agregar menciones si se especifican
         if (options.mentions && options.mentions.length > 0) {
             messagePayload.mentions = options.mentions;
-            console.log('📝 Mencionando a:', options.mentions.length, 'usuarios');
         }
 
-        const result = await instanceData.sock.sendMessage(chatId, messagePayload);
+        const result = await instanceData.sock.sendMessage(chatId, messagePayload, sendOptions);
 
         console.log('✅ [INSTANCE-MANAGER] Mensaje enviado exitosamente');
         return result;
@@ -1033,8 +1440,20 @@ class WhatsAppInstanceManager {
         const chatId = to.includes('@') ? to : `${to}@g.us`;
         console.log('🎨 [INSTANCE-MANAGER] Enviando sticker...');
 
+        // Convertir a WebP 512x512 si no lo es
+        let webpBuffer = stickerBuffer;
+        try {
+            const sharp = require('sharp');
+            webpBuffer = await sharp(stickerBuffer)
+                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .webp({ quality: 80 })
+                .toBuffer();
+        } catch (e) {
+            console.log('No se pudo convertir a WebP, enviando tal cual:', e.message);
+        }
+
         const result = await instanceData.sock.sendMessage(chatId, {
-            sticker: stickerBuffer
+            sticker: webpBuffer
         });
 
         console.log('✅ [INSTANCE-MANAGER] Sticker enviado exitosamente');
@@ -1208,11 +1627,74 @@ class WhatsAppInstanceManager {
         const chatId = to.includes('@') ? to : `${to}@g.us`;
         console.log('📤 [INSTANCE-MANAGER] Reenviando mensaje...');
 
-        const result = await instanceData.sock.sendMessage(chatId, {
-            forward: messageKey
-        });
+        // Buscar WAMessage en cache para forward nativo
+        const cachedMsg = this._msgCache.get(messageKey.id);
+        if (cachedMsg) {
+            const result = await instanceData.sock.sendMessage(chatId, { forward: cachedMsg });
+            console.log('✅ [INSTANCE-MANAGER] Forward nativo OK');
+            return result;
+        }
 
-        console.log('✅ [INSTANCE-MANAGER] Mensaje reenviado exitosamente');
+        // No está en cache - construir WAMessage fake para forward nativo
+        const database = require('./database');
+        const rows = await database.query(
+            'SELECT message, has_media, media_type, media_url, media_mimetype, media_filename, participant FROM conversation_logs WHERE message_id = ? LIMIT 1',
+            [messageKey.id]
+        );
+
+        if (!rows || rows.length === 0) {
+            throw new Error('No se encontró el mensaje original');
+        }
+
+        const origMsg = rows[0];
+
+        // Construir WAMessage para forward nativo
+        const fakeWAMsg = {
+            key: {
+                remoteJid: messageKey.remoteJid,
+                fromMe: messageKey.fromMe,
+                id: messageKey.id,
+                participant: origMsg.participant || undefined
+            },
+            message: {}
+        };
+
+        if (origMsg.has_media && origMsg.media_url) {
+            const fs = require('fs');
+            const path = require('path');
+            const mediaPath = origMsg.media_url.startsWith('/') ? origMsg.media_url.slice(1) : origMsg.media_url;
+            const filePath = path.join(process.cwd(), 'data', mediaPath);
+            console.log('📤 [FORWARD] Path archivo:', filePath, 'Existe:', require('fs').existsSync(filePath));
+
+            if (fs.existsSync(filePath)) {
+                const buffer = fs.readFileSync(filePath);
+                const caption = origMsg.message || '';
+
+                // Enviar media directamente (no se puede hacer forward nativo sin protobuf original)
+                let mediaContent;
+                if (origMsg.media_type === 'image') {
+                    mediaContent = { image: buffer, caption, mimetype: origMsg.media_mimetype || 'image/jpeg', contextInfo: { isForwarded: true } };
+                } else if (origMsg.media_type === 'video') {
+                    mediaContent = { video: buffer, caption, mimetype: origMsg.media_mimetype || 'video/mp4', contextInfo: { isForwarded: true } };
+                } else if (origMsg.media_type === 'audio') {
+                    mediaContent = { audio: buffer, mimetype: origMsg.media_mimetype || 'audio/mpeg', ptt: false, contextInfo: { isForwarded: true } };
+                } else if (origMsg.media_type === 'document') {
+                    mediaContent = { document: buffer, caption, mimetype: origMsg.media_mimetype || 'application/octet-stream', fileName: origMsg.media_filename || 'archivo', contextInfo: { isForwarded: true } };
+                }
+                if (mediaContent) {
+                    const result = await instanceData.sock.sendMessage(chatId, mediaContent);
+                    console.log('✅ [INSTANCE-MANAGER] Media reenviada con flag isForwarded');
+                    return result;
+                }
+            }
+        }
+
+        // Texto: enviar con contextInfo.isForwarded
+        const result = await instanceData.sock.sendMessage(chatId, {
+            text: origMsg.message || '[Mensaje sin texto]',
+            contextInfo: { isForwarded: true }
+        });
+        console.log('✅ [INSTANCE-MANAGER] Texto reenviado con flag isForwarded');
         return result;
     }
 
@@ -1236,7 +1718,49 @@ class WhatsAppInstanceManager {
             delete: messageKey
         });
 
+        // Marcar mensaje como eliminado en la BD
+        try {
+            await database.query(
+                'UPDATE conversation_logs SET message = ?, has_media = 0, media_url = NULL, media_type = NULL, media_mimetype = NULL, media_filename = NULL, media_caption = NULL, has_quoted_msg = 0, quoted_msg_body = NULL, quoted_msg_participant = NULL, quoted_msg_id = NULL WHERE message_id = ?',
+                ['Se elimino este mensaje', messageKey.id]
+            );
+        } catch (e) {
+            console.log('Error marcando mensaje eliminado en BD:', e.message);
+        }
+
+        // Notificar al frontend
+        if (global.io) {
+            global.io.emit('new-message', { phone: messageKey.remoteJid.replace('@g.us', ''), deleted: true });
+        }
+
         console.log('✅ [INSTANCE-MANAGER] Mensaje eliminado exitosamente');
+        return result;
+    }
+
+    // Editar un mensaje enviado
+    async editMessage(supportUserId, messageKey, newText) {
+        const instanceData = this.instances.get(supportUserId);
+        if (!instanceData || !instanceData.sock) throw new Error('Instancia no disponible');
+        if (instanceData.status !== 'connected') throw new Error('WhatsApp no esta conectado');
+
+        const result = await instanceData.sock.sendMessage(messageKey.remoteJid, {
+            text: newText,
+            edit: messageKey
+        });
+
+        try {
+            await database.query(
+                'UPDATE conversation_logs SET message = ?, is_edited = 1 WHERE message_id = ?',
+                [newText, messageKey.id]
+            );
+        } catch (e) {
+            console.log('Error actualizando mensaje editado en BD:', e.message);
+        }
+
+        if (global.io) {
+            global.io.emit('new-message', { phone: messageKey.remoteJid.replace('@g.us', ''), edited: true });
+        }
+
         return result;
     }
 
@@ -1252,34 +1776,68 @@ class WhatsAppInstanceManager {
     // Obtener nombre de contacto mencionado
     async getContactName(sock, jid, groupJid) {
         try {
+            const isLid = jid.endsWith('@lid');
+
             // Método 1: Obtener metadata del grupo y buscar en participantes
             try {
                 const groupMetadata = await sock.groupMetadata(groupJid);
-                const participant = groupMetadata.participants.find(p => p.id === jid);
+                // Buscar por ID exacto
+                let participant = groupMetadata.participants.find(p => p.id === jid);
 
-                // Si el participante tiene un pushName guardado, usarlo
+                // Si es LID, buscar también por el lid field o comparar sin sufijo
+                if (!participant && isLid) {
+                    const lidNumber = jid.replace('@lid', '');
+                    participant = groupMetadata.participants.find(p =>
+                        p.id.replace('@lid', '').replace('@s.whatsapp.net', '') === lidNumber ||
+                        p.lid === jid
+                    );
+                }
+
                 if (participant?.notify) {
                     console.log(`📛 Nombre encontrado en grupo: ${participant.notify}`);
                     return participant.notify;
+                }
+                // Si encontramos al participante pero sin notify, intentar con su verifiedName
+                if (participant?.verifiedName) {
+                    console.log(`📛 Nombre verificado encontrado: ${participant.verifiedName}`);
+                    return participant.verifiedName;
                 }
             } catch (groupError) {
                 console.log('No se pudo obtener metadata del grupo:', groupError.message);
             }
 
-            // Método 2: Verificar si está en WhatsApp y obtener notify
+            // Método 2: Buscar en logs de la BD (muy útil para LIDs)
             try {
-                const contactInfo = await sock.onWhatsApp(jid);
-                if (contactInfo && contactInfo[0]?.notify) {
-                    console.log(`📛 Nombre encontrado en WhatsApp: ${contactInfo[0].notify}`);
-                    return contactInfo[0].notify;
+                const database = require('./database');
+                const groupId = groupJid.replace('@g.us', '');
+                const logs = await database.query(
+                    'SELECT user_name FROM conversation_logs WHERE participant = ? AND user_name IS NOT NULL AND user_name != ? LIMIT 1',
+                    [jid, 'Usuario desconocido']
+                );
+                if (logs.length > 0 && logs[0].user_name) {
+                    console.log(`📛 Nombre encontrado en logs DB: ${logs[0].user_name}`);
+                    return logs[0].user_name;
                 }
-            } catch (waError) {
-                console.log('No se pudo verificar en WhatsApp:', waError.message);
+            } catch (dbError) {
+                console.log('No se pudo buscar en DB:', dbError.message);
             }
 
-            // Método 3: Intentar obtener del store de contactos del socket
+            // Método 3: Verificar si está en WhatsApp (solo funciona con @s.whatsapp.net, no LIDs)
+            if (!isLid) {
+                try {
+                    const contactInfo = await sock.onWhatsApp(jid);
+                    if (contactInfo && contactInfo[0]?.notify) {
+                        console.log(`📛 Nombre encontrado en WhatsApp: ${contactInfo[0].notify}`);
+                        return contactInfo[0].notify;
+                    }
+                } catch (waError) {
+                    console.log('No se pudo verificar en WhatsApp:', waError.message);
+                }
+            }
+
+            // Método 4: Intentar obtener del store de contactos del socket
             try {
-                const contact = await sock.store?.contacts?.[jid];
+                const contact = sock.store?.contacts?.[jid];
                 if (contact?.name || contact?.notify) {
                     const name = contact.name || contact.notify;
                     console.log(`📛 Nombre encontrado en store: ${name}`);
@@ -1289,17 +1847,16 @@ class WhatsAppInstanceManager {
                 console.log('No se pudo obtener del store:', storeError.message);
             }
 
-            // Fallback: usar últimos dígitos del número
-            const phoneNumber = jid.replace('@s.whatsapp.net', '');
-            const fallbackName = phoneNumber.slice(-4);
+            // Fallback: usar últimos dígitos del número/lid
+            const cleanId = jid.replace('@s.whatsapp.net', '').replace('@lid', '');
+            const fallbackName = cleanId.slice(-4);
             console.log(`📛 Usando fallback (últimos 4 dígitos): ${fallbackName}`);
             return fallbackName;
 
         } catch (error) {
             console.log('❌ Error general obteniendo nombre de contacto:', error.message);
-            // Último fallback
-            const phoneNumber = jid.replace('@s.whatsapp.net', '');
-            return phoneNumber.slice(-4);
+            const cleanId = jid.replace('@s.whatsapp.net', '').replace('@lid', '');
+            return cleanId.slice(-4);
         }
     }
 }

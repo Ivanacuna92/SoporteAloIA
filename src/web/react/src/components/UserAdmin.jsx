@@ -158,12 +158,12 @@ function UserAdmin() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 md:mb-8">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-800">Gestión de Usuarios</h2>
-          <p className="text-sm text-gray-500 mt-1">Administra los usuarios de soporte del sistema</p>
+          <h2 className="text-xl md:text-2xl font-semibold text-gray-800">Gestión de Usuarios</h2>
+          <p className="text-xs md:text-sm text-gray-500 mt-1">Administra los usuarios de soporte del sistema</p>
         </div>
         <button
           onClick={() => {
@@ -171,20 +171,20 @@ function UserAdmin() {
             setShowCreateModal(true);
           }}
           className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all"
-          style={{ background: '#FD6144' }}
-          onMouseEnter={(e) => e.target.style.background = '#FD3244'}
-          onMouseLeave={(e) => e.target.style.background = '#FD6144'}
+          style={{ background: '#00A19C' }}
+          onMouseEnter={(e) => e.target.style.background = '#00827E'}
+          onMouseLeave={(e) => e.target.style.background = '#00A19C'}
         >
           + Crear Usuario
         </button>
       </div>
 
       {/* Tabla de usuarios */}
-      <div className="bg-white rounded-2xl overflow-hidden" style={{
+      <div className="bg-white rounded-2xl overflow-x-auto" style={{
         border: '1px solid #E8EBED',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
       }}>
-        <table className="w-full">
+        <table className="w-full min-w-[600px]">
           <thead style={{ background: '#F9FAFB' }}>
             <tr>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Nombre</th>
@@ -201,7 +201,7 @@ function UserAdmin() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{
-                      background: user.active ? 'linear-gradient(135deg, #FD6144 0%, #FD3244 100%)' : '#9CA3AF'
+                      background: user.active ? 'linear-gradient(135deg, #00A19C 0%, #00827E 100%)' : '#9CA3AF'
                     }}>
                       {user.name?.charAt(0).toUpperCase()}
                     </div>
@@ -342,9 +342,9 @@ function UserAdmin() {
                 <button
                   type="submit"
                   className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
-                  style={{ background: '#FD6144' }}
-                  onMouseEnter={(e) => e.target.style.background = '#FD3244'}
-                  onMouseLeave={(e) => e.target.style.background = '#FD6144'}
+                  style={{ background: '#00A19C' }}
+                  onMouseEnter={(e) => e.target.style.background = '#00827E'}
+                  onMouseLeave={(e) => e.target.style.background = '#00A19C'}
                 >
                   Crear Usuario
                 </button>
@@ -413,9 +413,9 @@ function UserAdmin() {
                 <button
                   type="submit"
                   className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
-                  style={{ background: '#FD6144' }}
-                  onMouseEnter={(e) => e.target.style.background = '#FD3244'}
-                  onMouseLeave={(e) => e.target.style.background = '#FD6144'}
+                  style={{ background: '#00A19C' }}
+                  onMouseEnter={(e) => e.target.style.background = '#00827E'}
+                  onMouseLeave={(e) => e.target.style.background = '#00A19C'}
                 >
                   Guardar Cambios
                 </button>

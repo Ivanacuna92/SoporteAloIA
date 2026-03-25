@@ -1,151 +1,123 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { io } from 'socket.io-client';
 import { getMyContacts } from '../services/api';
 import notificationSound from '../assets/notification.mp3';
+import alexisSound from '../assets/alexis.mp3';
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [localContacts, setLocalContacts] = useState(contacts);
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread'
   const [lastReadMessages, setLastReadMessages] = useState(() => {
-    // Cargar del localStorage al iniciar
     const saved = localStorage.getItem('lastReadMessages');
     return saved ? JSON.parse(saved) : {};
   });
   const audioRef = useRef(null);
+  const alexisAudioRef = useRef(null);
   const previousTotalMessages = useRef(0);
+  const selectedContactRef = useRef(selectedContact);
+  const loadingRef = useRef(false);
+  const loadContactsRef = useRef(null);
 
   useEffect(() => {
-    // Pedir permiso para notificaciones al cargar
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
-    loadContacts();
-    const interval = setInterval(loadContacts, 5000); // Actualizar cada 5 segundos (balance entre rendimiento y UX)
-    return () => clearInterval(interval);
+    selectedContactRef.current = selectedContact;
   }, [selectedContact]);
 
-  // Guardar en localStorage cada vez que cambie
   useEffect(() => {
     localStorage.setItem('lastReadMessages', JSON.stringify(lastReadMessages));
   }, [lastReadMessages]);
 
   const loadContacts = async () => {
-    try {
-      const data = await getMyContacts();
-
-      // Calcular total de mensajes actuales
-      const currentTotalMessages = data.reduce((sum, contact) => sum + contact.messages.length, 0);
-
-      // Detectar nuevos mensajes y mostrar notificación
-      if (previousTotalMessages.current > 0 && currentTotalMessages > previousTotalMessages.current) {
-        // Encontrar el contacto con mensajes nuevos
-        const contactWithNewMessages = data.find((newContact, index) => {
-          const oldTotalMessages = contacts[index]?.messages?.length || 0;
-          return newContact.messages.length > oldTotalMessages;
-        });
-
-        if (contactWithNewMessages) {
-          const lastMessage = contactWithNewMessages.messages[contactWithNewMessages.messages.length - 1];
-          const contactName = contactWithNewMessages.isGroup
-            ? (contactWithNewMessages.groupName || contactWithNewMessages.phone)
-            : contactWithNewMessages.phone;
-
-          // Obtener preview del mensaje
-          let messagePreview = '';
-          if (lastMessage.message) {
-            messagePreview = lastMessage.message.length > 50
-              ? lastMessage.message.substring(0, 50) + '...'
-              : lastMessage.message;
-          } else if (lastMessage.hasMedia) {
-            messagePreview = `📎 ${lastMessage.mediaType === 'image' ? 'Imagen' :
-                                   lastMessage.mediaType === 'video' ? 'Video' :
-                                   lastMessage.mediaType === 'audio' ? 'Audio' :
-                                   lastMessage.mediaType === 'document' ? 'Documento' : 'Archivo'}`;
-          } else {
-            messagePreview = 'Nuevo mensaje';
-          }
-
-          // Mostrar notificación del sistema
-          if ('Notification' in window && Notification.permission === 'granted') {
-            const notification = new Notification(`💬 ${contactName}`, {
-              body: messagePreview,
-              icon: contactWithNewMessages.groupPicture || '/favicon.ico',
-              badge: '/favicon.ico',
-              tag: contactWithNewMessages.phone, // Para no duplicar notificaciones del mismo contacto
-              requireInteraction: false,
-              silent: false // El sonido lo reproducimos nosotros
-            });
-
-            // Hacer que al hacer clic en la notificación, se abra/enfoque la ventana y seleccione el contacto
-            notification.onclick = () => {
-              window.focus();
-              onSelectContact(contactWithNewMessages);
-              notification.close();
-            };
-
-            // Auto-cerrar después de 5 segundos
-            setTimeout(() => notification.close(), 5000);
-          }
-
-          // Reproducir sonido de notificación
-          if (audioRef.current) {
-            audioRef.current.play().catch(error => {
-              console.log('Error reproduciendo sonido:', error);
-            });
-          }
-        }
+    if (loadingRef.current) {
+      if (loadingRef._ts && Date.now() - loadingRef._ts > 15000) {
+        loadingRef.current = false;
+      } else {
+        return;
       }
+    }
+    loadingRef.current = true;
+    loadingRef._ts = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const data = await getMyContacts(controller.signal);
+      clearTimeout(timeout);
 
-      // Actualizar el contador de mensajes
-      previousTotalMessages.current = currentTotalMessages;
+      // PRIMERO actualizar estado - antes de cualquier otra lógica
+      setLocalContacts(data);
+      setContacts(data);
 
-      // Actualizar solo si hay cambios reales
-      setContacts(prevContacts => {
-        // Si no hay contactos previos, actualizar
-        if (prevContacts.length === 0) return data;
-
-        // Comparar si hay cambios reales
-        const hasChanges = data.some(newContact => {
-          const oldContact = prevContacts.find(c => c.phone === newContact.phone);
-          if (!oldContact) return true; // Contacto nuevo
-
-          // Verificar si hay cambios en mensajes o estado
-          return (
-            oldContact.messages.length !== newContact.messages.length ||
-            oldContact.mode !== newContact.mode ||
-            oldContact.isHumanMode !== newContact.isHumanMode
-          );
-        });
-
-        // Solo actualizar si hay cambios
-        return hasChanges ? data : prevContacts;
-      });
-
-      // Si hay un contacto seleccionado, actualizar sus mensajes solo si hay cambios
-      if (selectedContact) {
-        const updatedContact = data.find(c => c.phone === selectedContact.phone);
-        if (updatedContact) {
-          // Detectar cambios en cantidad de mensajes
-          const hasNewMessages =
-            updatedContact.messages.length !== selectedContact.messages.length ||
-            (updatedContact.messages.length > 0 && selectedContact.messages.length > 0 &&
-             updatedContact.messages[updatedContact.messages.length - 1].timestamp !==
-             selectedContact.messages[selectedContact.messages.length - 1].timestamp);
-
-          // Detectar cambios en estados de mensajes (checks)
-          const hasStatusChanges = updatedContact.messages.some((newMsg) => {
-            // Buscar el mensaje correspondiente por messageId
-            const oldMsg = selectedContact.messages.find(
-              m => m.messageId && m.messageId === newMsg.messageId
-            );
-            // Si existe y el estado cambió, retornar true
-            return oldMsg && oldMsg.status !== newMsg.status;
+      // Notificaciones y sonido DESPUÉS (envuelto en try-catch por si falla en móvil)
+      const currentTotalMessages = data.reduce((sum, contact) => sum + contact.messages.length, 0);
+      try {
+        if (previousTotalMessages.current > 0 && currentTotalMessages > previousTotalMessages.current) {
+          const contactWithNewMessages = data.find((newContact, index) => {
+            const oldTotalMessages = contacts[index]?.messages?.length || 0;
+            return newContact.messages.length > oldTotalMessages;
           });
 
-          if (hasNewMessages || hasStatusChanges) {
-            onSelectContact(updatedContact);
+          if (contactWithNewMessages) {
+            const lastMessage = contactWithNewMessages.messages[contactWithNewMessages.messages.length - 1];
+            const contactName = contactWithNewMessages.isGroup
+              ? (contactWithNewMessages.groupName || contactWithNewMessages.phone)
+              : contactWithNewMessages.phone;
 
-            // Marcar los nuevos mensajes como leídos automáticamente si estamos viendo este chat
+            let messagePreview = '';
+            if (lastMessage.message) {
+              messagePreview = lastMessage.message.length > 50
+                ? lastMessage.message.substring(0, 50) + '...'
+                : lastMessage.message;
+            } else if (lastMessage.hasMedia) {
+              messagePreview = `📎 ${lastMessage.mediaType === 'image' ? 'Imagen' :
+                                     lastMessage.mediaType === 'video' ? 'Video' :
+                                     lastMessage.mediaType === 'audio' ? 'Audio' :
+                                     lastMessage.mediaType === 'document' ? 'Documento' : 'Archivo'}`;
+            } else {
+              messagePreview = 'Nuevo mensaje';
+            }
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                const notification = new Notification(`💬 ${contactName}`, {
+                  body: messagePreview,
+                  icon: contactWithNewMessages.groupPicture || '/favicon.ico',
+                  badge: '/favicon.ico',
+                  tag: contactWithNewMessages.phone,
+                  requireInteraction: false,
+                  silent: false
+                });
+                notification.onclick = () => {
+                  window.focus();
+                  onSelectContact(contactWithNewMessages);
+                  notification.close();
+                };
+                setTimeout(() => notification.close(), 5000);
+              } catch (e) { /* Notification no soportada en este contexto */ }
+            }
+
+            const isCosasAloianas = contactName && contactName.toLowerCase().includes('cosas aloianas');
+            const soundRef = isCosasAloianas ? alexisAudioRef : audioRef;
+            if (soundRef.current) {
+              soundRef.current.play().catch(() => {});
+            }
+          }
+        }
+      } catch (e) { /* notificación/sonido falló, no importa */ }
+      previousTotalMessages.current = currentTotalMessages;
+
+      const currentSelected = selectedContactRef.current;
+      if (currentSelected) {
+        const updatedContact = data.find(c => c.phone === currentSelected.phone);
+        if (updatedContact) {
+          const hasChanges =
+            updatedContact.messages.length !== currentSelected.messages.length ||
+            updatedContact.mode !== currentSelected.mode ||
+            JSON.stringify(updatedContact.messages.map(m => m.message + (m.isEdited ? '1' : '0') + (m.status || ''))) !==
+            JSON.stringify(currentSelected.messages.map(m => m.message + (m.isEdited ? '1' : '0') + (m.status || '')));
+
+          if (hasChanges) {
+            onSelectContact(updatedContact);
             setLastReadMessages(prev => ({
               ...prev,
               [updatedContact.phone]: updatedContact.messages.length
@@ -156,13 +128,62 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
       setLoading(false);
     } catch (error) {
-      // Error silencioso
       setLoading(false);
+    } finally {
+      loadingRef.current = false;
     }
   };
 
+  // Guardar referencia estable a loadContacts
+  loadContactsRef.current = loadContacts;
+
+  // Polling + Socket + Visibility handlers
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    const poll = () => loadContactsRef.current?.();
+
+    poll();
+    const interval = setInterval(poll, 5000);
+
+    // WebSocket
+    let socket;
+    try {
+      socket = io({ reconnection: true, reconnectionDelay: 1000, reconnectionAttempts: Infinity, transports: ['polling'] });
+      socket.on('new-message', poll);
+    } catch (e) { /* ignore */ }
+
+    // Volver de background
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        poll();
+        if (socket && !socket.connected) socket.connect();
+      }
+    };
+    const onFocus = () => {
+      poll();
+      if (socket && !socket.connected) socket.connect();
+    };
+    const onTouch = () => poll();
+
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pageshow', onFocus);
+    window.addEventListener('touchstart', onTouch, { passive: true, once: false });
+
+    return () => {
+      clearInterval(interval);
+      if (socket) socket.disconnect();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pageshow', onFocus);
+      window.removeEventListener('touchstart', onTouch);
+    };
+  }, []);
+
   const handleSelectContact = (contact) => {
-    // Marcar mensajes como leídos
     setLastReadMessages(prev => ({
       ...prev,
       [contact.phone]: contact.messages.length
@@ -176,17 +197,28 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     return unreadCount > 0 ? unreadCount : 0;
   };
 
-  const filteredContacts = contacts
-    .filter(contact => {
-      const searchLower = searchTerm.toLowerCase();
+  const totalUnread = localContacts.reduce((sum, c) => sum + getUnreadCount(c), 0);
 
-      // Buscar en el número de teléfono o nombre de grupo
+  const markAllAsRead = () => {
+    const updated = {};
+    localContacts.forEach(c => {
+      updated[c.phone] = c.messages.length;
+    });
+    setLastReadMessages(prev => ({ ...prev, ...updated }));
+  };
+
+  const filteredContacts = localContacts
+    .filter(contact => {
+      if (activeFilter === 'unread' && getUnreadCount(contact) === 0) return false;
+
+      const searchLower = searchTerm.toLowerCase();
+      if (!searchLower) return true;
+
       const contactName = contact.isGroup ? (contact.groupName || contact.phone) : contact.phone;
       if (contactName.toLowerCase().includes(searchLower)) {
         return true;
       }
 
-      // Buscar en los mensajes de la conversación
       if (contact.messages && contact.messages.length > 0) {
         return contact.messages.some(msg =>
           msg.message && msg.message.toLowerCase().includes(searchLower)
@@ -196,40 +228,59 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       return false;
     })
     .sort((a, b) => {
-      // Primero los de soporte (prioridad máxima)
       if (a.mode === 'support' && b.mode !== 'support') return -1;
       if (a.mode !== 'support' && b.mode === 'support') return 1;
 
-      // Luego los que tienen mensajes no leídos
       const unreadA = getUnreadCount(a);
       const unreadB = getUnreadCount(b);
       if (unreadA > 0 && unreadB === 0) return -1;
       if (unreadA === 0 && unreadB > 0) return 1;
 
-      // Finalmente por última actividad
       return new Date(b.lastActivity) - new Date(a.lastActivity);
     });
 
   if (loading) {
-    return <div className="w-full md:w-96 bg-white border-r border-gray-200 flex items-center justify-center">
-      <span className="text-gray-500">Cargando contactos...</span>
+    return <div className="w-full md:w-96 flex items-center justify-center" style={{ background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-primary)' }}>
+      <span style={{ color: 'var(--text-secondary)' }}>Cargando contactos...</span>
     </div>;
   }
 
   return (
-    <div className="w-full md:w-96 flex flex-col overflow-hidden" style={{
-      background: '#FAFBFC',
-      borderRight: '1px solid #E8EBED'
+    <div className="w-full md:w-96 flex flex-col overflow-hidden max-w-full" style={{
+      background: 'var(--bg-primary)',
+      borderRight: '1px solid var(--border-primary)'
     }}>
-      {/* Audio de notificación oculto */}
       <audio ref={audioRef} src={notificationSound} preload="auto" />
+      <audio ref={alexisAudioRef} src={alexisSound} preload="auto" />
 
-      {/* Header estilo moderno */}
+      {/* Header */}
       <div className="p-4 md:p-6 pb-4 flex-shrink-0">
-        <h2 className="text-base font-semibold text-gray-800 mb-4">Conversaciones</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Conversaciones</h2>
+          <button
+            onClick={() => {
+              const isDark = document.documentElement.classList.toggle('dark');
+              localStorage.setItem('darkMode', isDark);
+              const meta = document.querySelector('meta[name="theme-color"]');
+              if (meta) meta.setAttribute('content', isDark ? '#0f172a' : '#FAFBFC');
+            }}
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+            style={{
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            <svg className="w-4 h-4 hidden dark:block" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd"/>
+            </svg>
+            <svg className="w-4 h-4 block dark:hidden" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+            </svg>
+          </button>
+        </div>
 
         <div className="relative w-full">
-          <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--text-tertiary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -239,27 +290,69 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl transition-all focus:outline-none text-sm box-border"
             style={{
-              background: '#F3F4F6',
+              background: 'var(--bg-tertiary)',
               border: '1px solid transparent',
+              color: 'var(--text-primary)',
             }}
             onFocus={(e) => {
-              e.target.style.background = '#ffffff';
-              e.target.style.border = '1px solid #FD6144';
-              e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              e.target.style.background = 'var(--bg-secondary)';
+              e.target.style.border = '1px solid var(--brand-primary)';
+              e.target.style.boxShadow = '0 0 0 3px var(--focus-ring)';
             }}
             onBlur={(e) => {
-              e.target.style.background = '#F3F4F6';
+              e.target.style.background = 'var(--bg-tertiary)';
               e.target.style.border = '1px solid transparent';
               e.target.style.boxShadow = 'none';
             }}
           />
         </div>
+
+        {/* Tabs de filtro */}
+        <div className="flex items-center gap-2 mt-3">
+          <button
+            onClick={() => setActiveFilter('all')}
+            className="px-3 py-1 rounded-full text-xs font-medium transition-all"
+            style={{
+              background: activeFilter === 'all' ? 'var(--brand-primary)' : 'var(--bg-tertiary)',
+              color: activeFilter === 'all' ? 'white' : 'var(--text-secondary)',
+            }}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setActiveFilter('unread')}
+            className="px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: activeFilter === 'unread' ? 'var(--brand-primary)' : 'var(--bg-tertiary)',
+              color: activeFilter === 'unread' ? 'white' : 'var(--text-secondary)',
+            }}
+          >
+            No leídos
+            {totalUnread > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold" style={{
+                background: activeFilter === 'unread' ? 'white' : 'var(--brand-primary)',
+                color: activeFilter === 'unread' ? 'var(--brand-primary)' : 'white',
+              }}>
+                {totalUnread > 99 ? '99+' : totalUnread}
+              </span>
+            )}
+          </button>
+          {totalUnread > 0 && (
+            <button
+              onClick={markAllAsRead}
+              className="ml-auto text-xs font-medium transition-all hover:underline"
+              style={{ color: 'var(--brand-primary)' }}
+            >
+              Marcar leídos
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Lista de contactos */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 md:px-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 md:px-3">
         {filteredContacts.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">No hay contactos</div>
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--text-tertiary)' }}>No hay contactos</div>
         ) : (
           filteredContacts.map(contact => (
             <div
@@ -267,20 +360,20 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               className="mb-1 rounded-xl cursor-pointer transition-all duration-200 w-full"
               style={{
                 background: selectedContact?.phone === contact.phone
-                  ? 'rgba(92, 25, 227, 0.08)'
+                  ? 'var(--bg-selected)'
                   : 'transparent',
                 boxShadow: selectedContact?.phone === contact.phone
-                  ? '0 2px 8px rgba(92, 25, 227, 0.15)'
+                  ? '0 2px 8px var(--shadow-md)'
                   : 'none',
                 border: selectedContact?.phone === contact.phone
-                  ? '1px solid rgba(92, 25, 227, 0.2)'
+                  ? '1px solid var(--border-primary)'
                   : '1px solid transparent'
               }}
               onMouseEnter={(e) => {
                 if (selectedContact?.phone !== contact.phone) {
-                  e.currentTarget.style.background = '#ffffff';
-                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.04)';
-                  e.currentTarget.style.border = '1px solid #E8EBED';
+                  e.currentTarget.style.background = 'var(--bg-hover)';
+                  e.currentTarget.style.boxShadow = '0 2px 6px var(--shadow-sm)';
+                  e.currentTarget.style.border = '1px solid var(--border-primary)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -293,8 +386,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               onClick={() => handleSelectContact(contact)}
             >
               <div className="flex items-center p-3 w-full min-w-0">
-                {/* Avatar moderno */}
-                <div className="relative mr-3 flex-shrink-0">
+                {/* Avatar */}
+                <div className="relative mr-3 flex-shrink-0" style={contact.isGroup && contact.groupPicture ? { backgroundColor: '#ffffff', borderRadius: '9999px', width: 'fit-content' } : undefined}>
                   {contact.isGroup && contact.groupPicture ? (
                     <img
                       src={contact.groupPicture}
@@ -302,10 +395,9 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                       className="w-12 h-12 rounded-full object-cover"
                       style={{
                         opacity: contact.leftGroup ? 0.6 : 1,
-                        border: '2px solid #ffffff'
+                        border: '2px solid var(--bg-secondary)'
                       }}
                       onError={(e) => {
-                        // Si la imagen falla, ocultar el elemento y mostrar el fallback
                         e.target.style.display = 'none';
                         e.target.nextSibling.style.display = 'flex';
                       }}
@@ -316,38 +408,24 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                     style={{
                       background: contact.leftGroup
                         ? 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)'
-                        : contact.isGroup
-                        ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
                         : contact.mode === 'support'
                         ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)'
-                        : 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                        : 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%)',
                       opacity: contact.leftGroup ? 0.6 : 1,
                       display: contact.isGroup && contact.groupPicture ? 'none' : 'flex'
                     }}
                   >
-                    {contact.isGroup ? (
-                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
-                      </svg>
-                    ) : contact.mode === 'support' ? (
-                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd"/>
-                      </svg>
-                    ) : (
-                      contact.phone.slice(-2)
-                    )}
+                    {contact.isGroup
+                      ? (contact.groupName || 'G').charAt(0).toUpperCase()
+                      : contact.phone.slice(-2)
+                    }
                   </div>
-                  {/* Indicador de estado */}
-                  {!contact.leftGroup && (
+                  {!contact.leftGroup && (contact.mode === 'support' || getUnreadCount(contact) > 0) && (
                     <div
                       className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
                       style={{
-                        background: contact.mode === 'support'
-                          ? '#F97316'
-                          : contact.isHumanMode
-                            ? '#3B82F6'
-                            : '#FD6144',
-                        borderColor: selectedContact?.phone === contact.phone ? '#ffffff' : '#FAFBFC'
+                        background: contact.mode === 'support' ? '#F97316' : 'var(--brand-primary)',
+                        borderColor: selectedContact?.phone === contact.phone ? 'var(--bg-secondary)' : 'var(--bg-primary)'
                       }}
                     ></div>
                   )}
@@ -356,23 +434,26 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 {/* Info del contacto */}
                 <div className="flex-1 min-w-0 overflow-hidden">
                   <div className="flex items-center justify-between mb-0.5 gap-2">
-                    <span className={`text-sm truncate flex-1 ${contact.leftGroup ? 'text-gray-400' : getUnreadCount(contact) > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
+                    <span className="text-sm truncate flex-1" style={{
+                      color: contact.leftGroup ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                      fontWeight: contact.leftGroup ? 400 : getUnreadCount(contact) > 0 ? 700 : 600
+                    }}>
                       {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {contact.leftGroup ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
-                          background: 'rgba(107, 114, 128, 0.1)',
-                          color: '#6B7280'
+                          background: 'var(--bg-tertiary)',
+                          color: 'var(--text-secondary)'
                         }}>
                           Inactivo
                         </span>
                       ) : (
                         <>
                           {getUnreadCount(contact) > 0 && (
-                            <span className="min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{
-                              background: '#FD6144',
-                              boxShadow: '0 2px 4px rgba(92, 25, 227, 0.3)'
+                            <span className="flex-shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{
+                              background: 'var(--brand-primary)',
+                              boxShadow: '0 2px 4px rgba(0, 161, 156, 0.3)'
                             }}>
                               {getUnreadCount(contact) > 99 ? '99+' : getUnreadCount(contact)}
                             </span>
@@ -389,13 +470,16 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                       )}
                     </div>
                   </div>
-                  <p className={`text-xs truncate w-full overflow-hidden ${contact.leftGroup ? 'text-gray-400 italic' : getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                  <p className="text-xs truncate w-full overflow-hidden" style={{
+                    color: contact.leftGroup ? 'var(--text-tertiary)' : getUnreadCount(contact) > 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontWeight: getUnreadCount(contact) > 0 ? 500 : 400,
+                    fontStyle: contact.leftGroup ? 'italic' : 'normal'
+                  }}>
                     {contact.leftGroup ? 'Ya no eres miembro' :
                      contact.lastMessage ?
-                       // Si es un grupo y es mensaje de cliente, mostrar nombre del usuario
                        (contact.isGroup && contact.lastMessage.role === 'cliente' && contact.lastMessage.userName ?
-                         `${contact.lastMessage.userName}: ${contact.lastMessage.text}` :
-                         contact.lastMessage.text
+                         `${contact.lastMessage.userName}: ${contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')}` :
+                         contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')
                        ) :
                        'Sin mensajes'
                     }

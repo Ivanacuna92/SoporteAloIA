@@ -516,9 +516,9 @@ export async function getInstances() {
 // ===== FUNCIONES DE CONTACTOS FILTRADOS POR USUARIO =====
 
 // Obtener mis contactos asignados
-export async function getMyContacts() {
+export async function getMyContacts(signal) {
   try {
-    const response = await fetchWithCredentials(`${API_BASE}/my-contacts`);
+    const response = await fetchWithCredentials(`${API_BASE}/my-contacts?_t=${Date.now()}`, signal ? { signal, cache: 'no-store' } : { cache: 'no-store' });
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -771,6 +771,92 @@ export async function sendPresence(phone, state) {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.details || error.error || 'Error actualizando presencia');
+  }
+
+  return response.json();
+}
+
+// Obtener participantes de un grupo
+export async function editMyMessage(messageKey, newText) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/edit-message`, {
+    method: 'POST',
+    body: JSON.stringify({ messageKey, newText })
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error editando mensaje');
+  }
+  return response.json();
+}
+
+export async function getGroupParticipants(groupId) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/group-participants/${groupId}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error obteniendo participantes');
+  }
+  return response.json();
+}
+
+// Obtener receipts de un mensaje
+export async function getMessageReceipts(messageId) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/message-receipts/${messageId}`);
+  if (!response.ok) throw new Error('Error obteniendo receipts');
+  return response.json();
+}
+
+// ===== FUNCIONES DE STICKERS FAVORITOS =====
+
+// Guardar sticker como favorito
+export async function saveStickerFavorite(stickerUrl, name = '') {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/sticker-favorites`, {
+    method: 'POST',
+    body: JSON.stringify({ sticker_url: stickerUrl, name })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error guardando sticker favorito');
+  }
+
+  return response.json();
+}
+
+// Obtener stickers favoritos
+export async function getStickerFavorites() {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/sticker-favorites`);
+
+  if (!response.ok) {
+    throw new Error('Error obteniendo stickers favoritos');
+  }
+
+  return response.json();
+}
+
+// Eliminar sticker favorito
+export async function deleteStickerFavorite(id) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/sticker-favorites/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error eliminando sticker favorito');
+  }
+
+  return response.json();
+}
+
+// Enviar sticker favorito desde URL
+export async function sendStickerFromUrl(phone, stickerUrl) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-sticker-url`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, sticker_url: stickerUrl })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando sticker');
   }
 
   return response.json();

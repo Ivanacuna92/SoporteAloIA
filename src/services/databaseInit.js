@@ -98,6 +98,50 @@ class DatabaseInit {
                 console.log('✅ Usuario admin creado: admin@whatspanel.com / admin123');
             }
 
+            // Tabla de participantes de grupo (cache LID → teléfono → nombre)
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS group_participants (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    group_jid VARCHAR(100) NOT NULL,
+                    participant_jid VARCHAR(100) NOT NULL,
+                    phone_jid VARCHAR(100),
+                    display_name VARCHAR(255),
+                    admin_role VARCHAR(20),
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_group_participant (group_jid, participant_jid),
+                    INDEX idx_participant (participant_jid),
+                    INDEX idx_group (group_jid)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+
+            // Tabla de receipts individuales por participante
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS message_receipts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    message_id VARCHAR(100) NOT NULL,
+                    group_jid VARCHAR(100) NOT NULL,
+                    participant_jid VARCHAR(100) NOT NULL,
+                    receipt_type VARCHAR(20) NOT NULL,
+                    receipt_timestamp DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_msg_participant_type (message_id, participant_jid, receipt_type),
+                    INDEX idx_message (message_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+
+            // Crear tabla de stickers favoritos
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS sticker_favorites (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    sticker_url VARCHAR(512) NOT NULL,
+                    name VARCHAR(255),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES support_users(id) ON DELETE CASCADE,
+                    INDEX idx_user_id (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+
             console.log('✅ Tablas de base de datos verificadas/creadas');
             return true;
         } catch (error) {

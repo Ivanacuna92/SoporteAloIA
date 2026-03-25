@@ -1,8 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
+const { Server: SocketServer } = require('socket.io');
 const logger = require('../services/logger');
 const humanModeManager = require('../services/humanModeManager');
 const salesManager = require('../services/salesManager');
@@ -18,8 +20,14 @@ class WebServer {
     constructor(port = 3000) {
         this.app = express();
         this.port = port;
+        this.httpServer = http.createServer(this.app);
+        this.io = new SocketServer(this.httpServer, {
+            cors: { origin: true, credentials: true }
+        });
+        global.io = this.io; // Hacer accesible globalmente para emitir desde otros módulos
         this.setupMiddleware();
         this.setupRoutes();
+        this.setupSocket();
     }
 
     setupMiddleware() {
@@ -29,6 +37,37 @@ class WebServer {
         }));
         this.app.use(express.json());
         this.app.use(cookieParser());
+
+        // No cachear respuestas de API
+        this.app.use('/api', (req, res, next) => {
+            res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.set('Pragma', 'no-cache');
+            res.set('Expires', '0');
+            next();
+        });
+
+        // Forzar que sw.js NUNCA se cachee y siempre se sirva fresco
+        this.app.get('/sw.js', (req, res) => {
+            res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.set('Content-Type', 'application/javascript');
+            res.send(`
+self.addEventListener('install', function() { self.skipWaiting(); });
+self.addEventListener('activate', function(e) {
+  e.waitUntil(
+    caches.keys().then(function(k) { return Promise.all(k.map(function(c) { return caches.delete(c); })); })
+    .then(function() { return self.clients.claim(); })
+    .then(function() { return self.registration.unregister(); })
+  );
+});
+self.addEventListener('fetch', function() {});
+            `.trim());
+        });
+
+        // No cachear index.html
+        this.app.get('/', (req, res, next) => {
+            res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+            next();
+        });
 
         // Servir archivos de medios (imágenes, videos, etc.)
         this.app.use('/media', express.static(path.join(__dirname, '../../data/media')));
@@ -1371,21 +1410,29 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
         return stats;
     }
 
+    setupSocket() {
+        this.io.on('connection', (socket) => {
+            console.log('🔌 Cliente conectado al WebSocket:', socket.id);
+            socket.on('disconnect', () => {
+                console.log('🔌 Cliente desconectado:', socket.id);
+            });
+        });
+    }
+
     async start() {
         if (process.env.NODE_ENV === 'production') {
-            // En producción, usar servidor Express normal
-            this.app.listen(this.port, '0.0.0.0', () => {
+            this.httpServer.listen(this.port, '0.0.0.0', () => {
                 console.log(`📊 Servidor web de reportes en http://0.0.0.0:${this.port}`);
                 logger.log('SYSTEM', `Servidor web iniciado en puerto ${this.port}`);
             });
         } else {
-            // En desarrollo, usar ViteExpress
             ViteExpress.config({
                 mode: 'development',
                 viteConfigFile: path.join(__dirname, '../../vite.config.js')
             });
 
-            ViteExpress.listen(this.app, this.port, () => {
+            ViteExpress.bind(this.app, this.httpServer);
+            this.httpServer.listen(this.port, () => {
                 console.log(`📊 Servidor web con Vite en http://localhost:${this.port}`);
                 logger.log('SYSTEM', `Servidor web con Vite iniciado en puerto ${this.port}`);
             });

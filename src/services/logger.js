@@ -4,6 +4,23 @@ class Logger {
     constructor() {
         this.logQueue = []; // Cola para logs en caso de error de BD
         this.isProcessingQueue = false;
+        this._profileTableReady = false;
+    }
+
+    async _ensureProfileTable() {
+        if (this._profileTableReady) return;
+        try {
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS participant_profiles (
+                    jid VARCHAR(100) PRIMARY KEY,
+                    display_name VARCHAR(255),
+                    profile_picture VARCHAR(512),
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_updated (updated_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            this._profileTableReady = true;
+        } catch (e) { this._profileTableReady = true; /* ignorar si falla, el JOIN simplemente no devuelve pic */ }
     }
 
     async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null, mediaInfo = null, isForwarded = false, participant = null, quotedMsgInfo = null) {
@@ -295,9 +312,14 @@ class Logger {
             return [];
         }
 
+        await this._ensureProfileTable();
+
         try {
             const logs = await database.query(
-                'SELECT * FROM conversation_logs WHERE user_id = ? ORDER BY timestamp ASC',
+                `SELECT cl.*, pp.profile_picture as participant_pic
+                 FROM conversation_logs cl
+                 LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
+                 WHERE cl.user_id = ? ORDER BY cl.timestamp ASC`,
                 [clientPhone]
             );
 
@@ -314,6 +336,7 @@ class Logger {
                 response: log.response,
                 supportUserId: log.support_user_id,
                 participant: log.participant,
+                participantPic: log.participant_pic || null,
                 // Campos de medios
                 hasMedia: log.has_media || false,
                 mediaType: log.media_type,
@@ -323,6 +346,7 @@ class Logger {
                 mediaCaption: log.media_caption,
                 // Campo de mensaje reenviado
                 isForwarded: log.is_forwarded || false,
+                isEdited: log.is_edited || false,
                 // Campos de mensaje citado
                 hasQuotedMsg: log.has_quoted_msg || false,
                 quotedMsg: log.has_quoted_msg ? {

@@ -269,6 +269,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         messageId: log.messageId,
                         userName: log.userName,
                         participant: log.participant,
+                        participantPic: log.participantPic || null,
                         // Campos de medios
                         hasMedia: log.hasMedia || false,
                         mediaType: log.mediaType,
@@ -276,9 +277,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         mediaMimetype: log.mediaMimetype,
                         mediaFilename: log.mediaFilename,
                         mediaCaption: log.mediaCaption,
-                        // Campo de mensaje reenviado
                         isForwarded: log.isForwarded || false,
-                        // Campos de mensaje citado
+                        isEdited: log.isEdited || false,
                         hasQuotedMsg: log.hasQuotedMsg || false,
                         quotedMsg: log.quotedMsg || null
                     }));
@@ -308,8 +308,9 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         lastMessage: lastMsg ? {
                             text: lastMsg.message,
                             timestamp: lastMsg.timestamp,
-                            userName: lastMsg.userName, // Agregar nombre del usuario
-                            role: lastMsg.role // Agregar rol para identificar si es cliente
+                            userName: lastMsg.userName,
+                            role: lastMsg.role,
+                            mediaType: lastMsg.mediaType || null
                         } : null
                     };
                 })
@@ -319,6 +320,19 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error obteniendo contactos del usuario:', error);
             res.status(500).json({ error: 'Error obteniendo contactos' });
+        }
+    });
+
+    // Endpoint ligero: solo cuenta de mensajes de un contacto (para polling rápido)
+    app.get('/api/my-contacts/:phone/message-count', requireAuth, async (req, res) => {
+        try {
+            const result = await database.query(
+                'SELECT COUNT(*) as count FROM conversation_logs WHERE user_id = ?',
+                [req.params.phone]
+            );
+            res.json({ count: result[0]?.count || 0 });
+        } catch (error) {
+            res.status(500).json({ error: 'Error' });
         }
     });
 
@@ -383,26 +397,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.sendImage(req.user.id, chatId, req.file.buffer, caption || '');
 
-            // Guardar archivo localmente para poder mostrarlo en el chat
-            const ext = req.file.mimetype.split('/')[1] || 'jpg';
-            const filename = `${phone}_${Date.now()}.${ext}`;
-            const mediaDir = path.join(process.cwd(), 'data', 'media', 'images');
-            await fs.mkdir(mediaDir, { recursive: true });
-            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
-            const mediaUrl = `/media/images/${filename}`;
-
-            // Registrar el mensaje
-            const logger = require('../services/logger');
-            const mediaInfo = {
-                has_media: true,
-                media_type: 'image',
-                media_url: mediaUrl,
-                media_mimetype: req.file.mimetype,
-                media_filename: req.file.originalname,
-                media_caption: caption || ''
-            };
-            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
-            await logger.log('soporte', caption || '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
+            // Esto evita mensajes duplicados
 
             res.json({
                 success: true,
@@ -440,25 +436,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 caption || ''
             );
 
-            // Guardar archivo localmente para poder mostrarlo en el chat
-            const filename = `${phone}_${Date.now()}_${req.file.originalname}`;
-            const mediaDir = path.join(process.cwd(), 'data', 'media', 'documents');
-            await fs.mkdir(mediaDir, { recursive: true });
-            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
-            const mediaUrl = `/media/documents/${filename}`;
-
-            // Registrar el mensaje
-            const logger = require('../services/logger');
-            const mediaInfo = {
-                has_media: true,
-                media_type: 'document',
-                media_url: mediaUrl,
-                media_mimetype: req.file.mimetype,
-                media_filename: req.file.originalname,
-                media_caption: caption || ''
-            };
-            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
-            await logger.log('soporte', caption || '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
+            // Esto evita mensajes duplicados
 
             res.json({
                 success: true,
@@ -489,26 +468,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.sendAudio(req.user.id, chatId, req.file.buffer, ptt === 'true');
 
-            // Guardar archivo localmente para poder mostrarlo en el chat
-            const ext = req.file.mimetype.split('/')[1] || 'mp3';
-            const filename = `${phone}_${Date.now()}.${ext}`;
-            const mediaDir = path.join(process.cwd(), 'data', 'media', 'audios');
-            await fs.mkdir(mediaDir, { recursive: true });
-            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
-            const mediaUrl = `/media/audios/${filename}`;
-
-            // Registrar el mensaje
-            const logger = require('../services/logger');
-            const mediaInfo = {
-                has_media: true,
-                media_type: 'audio',
-                media_url: mediaUrl,
-                media_mimetype: req.file.mimetype,
-                media_filename: req.file.originalname,
-                media_caption: null
-            };
-            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
-            await logger.log('soporte', '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
+            // Esto evita mensajes duplicados
 
             res.json({
                 success: true,
@@ -539,26 +500,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.sendVideo(req.user.id, chatId, req.file.buffer, caption || '');
 
-            // Guardar archivo localmente para poder mostrarlo en el chat
-            const ext = req.file.mimetype.split('/')[1] || 'mp4';
-            const filename = `${phone}_${Date.now()}.${ext}`;
-            const mediaDir = path.join(process.cwd(), 'data', 'media', 'videos');
-            await fs.mkdir(mediaDir, { recursive: true });
-            await fs.writeFile(path.join(mediaDir, filename), req.file.buffer);
-            const mediaUrl = `/media/videos/${filename}`;
-
-            // Registrar el mensaje
-            const logger = require('../services/logger');
-            const mediaInfo = {
-                has_media: true,
-                media_type: 'video',
-                media_url: mediaUrl,
-                media_mimetype: req.file.mimetype,
-                media_filename: req.file.originalname,
-                media_caption: caption || ''
-            };
-            // log(role, message, userId, userName, isGroup, response, supportUserId, messageId, mediaInfo, isForwarded)
-            await logger.log('soporte', caption || '', phone, req.user.name, true, null, req.user.id, null, mediaInfo, false);
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
+            // Esto evita mensajes duplicados
 
             res.json({
                 success: true,
@@ -589,9 +532,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             await instanceManager.forwardMessage(req.user.id, chatId, messageKey);
 
-            // Registrar el mensaje
-            const logger = require('../services/logger');
-            await logger.log('soporte', '[Mensaje reenviado]', phone, req.user.name, true, req.user.id);
+            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
 
             res.json({
                 success: true,
@@ -828,6 +769,27 @@ module.exports = function(app, requireAuth, requireAdmin) {
         }
     });
 
+    // Obtener reacciones de un chat
+    app.get('/api/my-contacts/:phone/reactions', requireAuth, async (req, res) => {
+        try {
+            const { phone } = req.params;
+            const database = require('../services/database');
+            const rows = await database.query(
+                'SELECT message_id, emoji, participant FROM message_reactions WHERE phone = ?',
+                [phone]
+            );
+            const reactions = {};
+            for (const row of rows) {
+                if (!reactions[row.message_id]) reactions[row.message_id] = [];
+                reactions[row.message_id].push({ emoji: row.emoji, participant: row.participant });
+            }
+            res.json(reactions);
+        } catch (error) {
+            console.error('Error obteniendo reacciones:', error);
+            res.json({});
+        }
+    });
+
     // Marcar chat como leído
     app.post('/api/my-instance/mark-read', requireAuth, async (req, res) => {
         try {
@@ -895,16 +857,26 @@ module.exports = function(app, requireAuth, requireAdmin) {
     // Enviar mensaje con opciones avanzadas (menciones, responder a mensaje)
     app.post('/api/my-instance/send-message-advanced', requireAuth, async (req, res) => {
         try {
-            const { phone, message, quotedMessageId, quotedRemoteJid, quotedParticipant, mentions } = req.body;
+            const { phone, message, quotedMessageId, quotedRemoteJid, quotedParticipant, mentions, reaction } = req.body;
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            // Manejar reacciones
+            if (reaction) {
+                console.log('🔥 [REACTION] Recibida petición de reacción:', JSON.stringify(reaction));
+                const instanceData = instanceManager.getInstance(req.user.id);
+                if (!instanceData || !instanceData.sock) throw new Error('Instancia no disponible');
+                await instanceData.sock.sendMessage(chatId, { react: { text: reaction.text, key: reaction.key } });
+                console.log('✅ [REACTION] Reacción enviada exitosamente');
+                return res.json({ success: true, message: 'Reacción enviada' });
+            }
 
             if (!phone || !message) {
                 return res.status(400).json({
                     error: 'Phone y message son requeridos'
                 });
             }
-
-            const instanceManager = global.whatsappInstanceManager;
-            const chatId = `${phone}@g.us`;
 
             const options = {};
 
@@ -937,6 +909,287 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 error: 'Error enviando mensaje',
                 details: error.message
             });
+        }
+    });
+
+    // Editar un mensaje
+    app.post('/api/my-instance/edit-message', requireAuth, async (req, res) => {
+        try {
+            const { messageKey, newText } = req.body;
+            if (!messageKey || !newText) {
+                return res.status(400).json({ error: 'messageKey y newText son requeridos' });
+            }
+            const instanceManager = global.whatsappInstanceManager;
+            await instanceManager.editMessage(req.user.id, messageKey, newText);
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ error: 'Error editando mensaje', details: error.message });
+        }
+    });
+
+    // Obtener participantes de un grupo
+    app.get('/api/my-instance/group-participants/:groupId', requireAuth, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const { groupId } = req.params;
+            const instanceManager = global.whatsappInstanceManager;
+            const instanceData = instanceManager.getInstance(userId);
+
+            if (!instanceData || !instanceData.sock) {
+                return res.status(400).json({ error: 'No hay instancia de WhatsApp activa' });
+            }
+
+            const groupJid = groupId.includes('@') ? groupId : `${groupId}@g.us`;
+            const groupMetadata = await instanceData.sock.groupMetadata(groupJid);
+            const myJid = instanceData.sock.user?.id;
+            const myLid = instanceData.sock.user?.lid;
+
+            const participants = groupMetadata.participants
+                .filter(p => {
+                    // Excluir al bot/soporte propio
+                    if (myJid && p.id === myJid) return false;
+                    if (myLid && p.lid === myLid) return false;
+                    if (myJid && p.id.split(':')[0] === myJid.split(':')[0]) return false;
+                    return true;
+                })
+                .map(p => ({
+                    id: p.id,
+                    lid: p.lid || null,
+                    name: p.notify || null,
+                    admin: p.admin || null
+                }));
+
+            // Cachear participantes en BD
+            try {
+                for (const p of groupMetadata.participants) {
+                    const pJid = p.lid || p.id;
+                    const phoneJid = p.id.endsWith('@s.whatsapp.net') ? p.id : null;
+                    await database.query(
+                        `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
+                         VALUES (?, ?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE phone_jid = COALESCE(VALUES(phone_jid), phone_jid),
+                                                  display_name = COALESCE(VALUES(display_name), display_name),
+                                                  admin_role = VALUES(admin_role)`,
+                        [groupJid, pJid, phoneJid, p.notify || p.verifiedName || null, p.admin || null]
+                    );
+                    if (p.lid && p.id.endsWith('@s.whatsapp.net')) {
+                        await database.query(
+                            `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
+                             VALUES (?, ?, ?, ?, ?)
+                             ON DUPLICATE KEY UPDATE phone_jid = COALESCE(VALUES(phone_jid), phone_jid),
+                                                      display_name = COALESCE(VALUES(display_name), display_name)`,
+                            [groupJid, p.lid, p.id, p.notify || p.verifiedName || null, p.admin || null]
+                        );
+                    }
+                }
+            } catch (e) {
+                console.log('Error cacheando participantes:', e.message);
+            }
+
+            // Intentar enriquecer nombres desde los mensajes del log
+            const logger = require('../services/logger');
+            const logs = await logger.getLogsByClientPhone(groupId);
+            const nameMap = {};
+            for (const log of logs) {
+                if (log.participant && log.userName && log.userName !== 'Usuario desconocido') {
+                    nameMap[log.participant] = log.userName;
+                }
+            }
+
+            // Enriquecer con cache de group_participants
+            try {
+                const cached = await database.query(
+                    'SELECT participant_jid, display_name, phone_jid FROM group_participants WHERE group_jid = ?',
+                    [groupJid]
+                );
+                const cachedMap = {};
+                for (const cp of cached) {
+                    cachedMap[cp.participant_jid] = cp;
+                }
+                for (const p of participants) {
+                    if (!p.name && nameMap[p.id]) {
+                        p.name = nameMap[p.id];
+                    }
+                    if (!p.name && cachedMap[p.id]?.display_name) {
+                        p.name = cachedMap[p.id].display_name;
+                    }
+                    if (p.id.endsWith('@lid') && cachedMap[p.id]?.phone_jid) {
+                        p.phone = cachedMap[p.id].phone_jid.replace('@s.whatsapp.net', '');
+                    }
+                }
+            } catch (e) {
+                for (const p of participants) {
+                    if (!p.name && nameMap[p.id]) p.name = nameMap[p.id];
+                }
+            }
+
+            res.json(participants);
+        } catch (error) {
+            console.error('Error obteniendo participantes del grupo:', error);
+            res.status(500).json({ error: 'Error obteniendo participantes', details: error.message });
+        }
+    });
+
+    // ===== ENDPOINTS DE STICKERS FAVORITOS =====
+
+    // Guardar sticker como favorito
+    app.post('/api/my-instance/sticker-favorites', requireAuth, async (req, res) => {
+        try {
+            const { sticker_url, name } = req.body;
+
+            if (!sticker_url) {
+                return res.status(400).json({ error: 'sticker_url es requerido' });
+            }
+
+            // Verificar que no exista ya para este usuario
+            const existing = await database.findOne(
+                'sticker_favorites',
+                'user_id = ? AND sticker_url = ?',
+                [req.user.id, sticker_url]
+            );
+
+            if (existing) {
+                return res.status(409).json({ error: 'Este sticker ya está en tus favoritos' });
+            }
+
+            await database.insert('sticker_favorites', {
+                user_id: req.user.id,
+                sticker_url: sticker_url,
+                name: name || null
+            });
+
+            res.json({ success: true, message: 'Sticker guardado en favoritos' });
+        } catch (error) {
+            console.error('Error guardando sticker favorito:', error);
+            res.status(500).json({ error: 'Error guardando sticker favorito' });
+        }
+    });
+
+    // Listar stickers favoritos del usuario
+    app.get('/api/my-instance/sticker-favorites', requireAuth, async (req, res) => {
+        try {
+            const stickers = await database.findAll(
+                'sticker_favorites',
+                'user_id = ?',
+                [req.user.id],
+                'created_at DESC'
+            );
+
+            res.json({ success: true, stickers });
+        } catch (error) {
+            console.error('Error obteniendo stickers favoritos:', error);
+            res.status(500).json({ error: 'Error obteniendo stickers favoritos' });
+        }
+    });
+
+    // Eliminar sticker favorito
+    app.delete('/api/my-instance/sticker-favorites/:id', requireAuth, async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            // Verificar que pertenece al usuario
+            const sticker = await database.findOne(
+                'sticker_favorites',
+                'id = ? AND user_id = ?',
+                [id, req.user.id]
+            );
+
+            if (!sticker) {
+                return res.status(404).json({ error: 'Sticker no encontrado' });
+            }
+
+            await database.delete('sticker_favorites', 'id = ?', [id]);
+
+            res.json({ success: true, message: 'Sticker eliminado de favoritos' });
+        } catch (error) {
+            console.error('Error eliminando sticker favorito:', error);
+            res.status(500).json({ error: 'Error eliminando sticker favorito' });
+        }
+    });
+
+    // Enviar sticker favorito desde URL (archivo ya almacenado)
+    app.post('/api/my-instance/send-sticker-url', requireAuth, async (req, res) => {
+        try {
+            const { phone, sticker_url } = req.body;
+
+            if (!phone || !sticker_url) {
+                return res.status(400).json({ error: 'Phone y sticker_url son requeridos' });
+            }
+
+            // Leer el archivo del sticker desde el path
+            const cleanUrl = sticker_url.replace(/^\//, '');
+            const stickerPath = path.join('/home/container/data', cleanUrl);
+            console.log('📤 [STICKER-URL] Path:', stickerPath);
+            const stickerBuffer = await fs.readFile(stickerPath);
+
+            const instanceManager = global.whatsappInstanceManager;
+            const chatId = `${phone}@g.us`;
+
+            await instanceManager.sendSticker(req.user.id, chatId, stickerBuffer);
+
+            res.json({ success: true, message: 'Sticker enviado correctamente' });
+        } catch (error) {
+            console.error('Error enviando sticker desde URL:', error);
+            res.status(500).json({
+                error: 'Error enviando sticker',
+                details: error.message
+            });
+        }
+    });
+
+    // Obtener receipts de un mensaje
+    app.get('/api/my-instance/message-receipts/:messageId', requireAuth, async (req, res) => {
+        try {
+            const { messageId } = req.params;
+            const receipts = await database.query(`
+                SELECT mr.participant_jid, mr.receipt_type, mr.receipt_timestamp,
+                       gp.display_name, gp.phone_jid
+                FROM message_receipts mr
+                LEFT JOIN group_participants gp
+                    ON mr.participant_jid = gp.participant_jid AND mr.group_jid = gp.group_jid
+                WHERE mr.message_id = ?
+                ORDER BY mr.receipt_type DESC, mr.receipt_timestamp ASC
+            `, [messageId]);
+
+            // Buscar nombres también en conversation_logs como fallback
+            const nameMap = {};
+            try {
+                const logs = await database.query(
+                    `SELECT DISTINCT participant, user_name FROM conversation_logs
+                     WHERE participant IS NOT NULL AND user_name IS NOT NULL AND user_name != 'Usuario desconocido'`
+                );
+                for (const log of logs) {
+                    if (log.participant) nameMap[log.participant] = log.user_name;
+                }
+            } catch (e) {}
+
+            const participantMap = {};
+            for (const r of receipts) {
+                const key = r.participant_jid;
+                if (!participantMap[key] || r.receipt_type === 'read') {
+                    const name = r.display_name || nameMap[r.participant_jid] || r.phone_jid?.split('@')[0] || r.participant_jid.split('@')[0];
+                    participantMap[key] = {
+                        jid: r.participant_jid,
+                        name: name,
+                        phone: r.phone_jid?.replace('@s.whatsapp.net', '') || null,
+                        status: r.receipt_type,
+                        timestamp: r.receipt_timestamp
+                    };
+                }
+            }
+
+            const result = Object.values(participantMap);
+            res.json({
+                success: true,
+                receipts: result,
+                summary: {
+                    read: result.filter(r => r.status === 'read').length,
+                    delivered: result.filter(r => r.status === 'delivered').length,
+                    total: result.length
+                }
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Error obteniendo receipts', details: error.message });
         }
     });
 };

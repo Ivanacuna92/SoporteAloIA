@@ -265,11 +265,11 @@ function MySession() {
             disabled={isResetting}
             className="w-full px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             style={{
-              background: '#FD6144',
+              background: '#00A19C',
               color: 'white'
             }}
-            onMouseEnter={(e) => !isResetting && (e.target.style.background = '#FD3244')}
-            onMouseLeave={(e) => !isResetting && (e.target.style.background = '#FD6144')}
+            onMouseEnter={(e) => !isResetting && (e.target.style.background = '#00827E')}
+            onMouseLeave={(e) => !isResetting && (e.target.style.background = '#00A19C')}
           >
             {isResetting ? (
               <>
@@ -295,19 +295,19 @@ function MySession() {
           <p className="text-[10px] md:text-xs font-semibold text-gray-700 mb-3">Cómo vincular:</p>
           <ol className="space-y-2 text-[10px] md:text-xs text-gray-600">
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>1</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#00A19C' }}>1</span>
               <span>Abre WhatsApp en tu teléfono</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>2</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#00A19C' }}>2</span>
               <span>Ve a Configuración → Dispositivos vinculados</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>3</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#00A19C' }}>3</span>
               <span>Toca "Vincular dispositivo"</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#FD6144' }}>4</span>
+              <span className="flex-shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-semibold text-white" style={{ background: '#00A19C' }}>4</span>
               <span>Escanea el código QR mostrado arriba</span>
             </li>
           </ol>
