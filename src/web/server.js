@@ -479,6 +479,61 @@ self.addEventListener('fetch', function() {});
             });
         });
 
+        // ===== ENDPOINT EXTERNO (autenticado por API key, sin sesión) =====
+        this.app.post('/api/external/send-message', async (req, res) => {
+            try {
+                // Validar API key
+                const apiKey = req.headers['x-api-key'] || (req.headers.authorization || '').replace('Bearer ', '');
+                if (!apiKey || apiKey !== process.env.EXTERNAL_API_KEY) {
+                    return res.status(401).json({ error: 'API key inválida o no proporcionada' });
+                }
+
+                const { phone, message, userId } = req.body;
+
+                if (!phone || !message) {
+                    return res.status(400).json({ error: 'Se requieren los campos "phone" y "message"' });
+                }
+
+                const formattedPhone = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+                let result;
+
+                // Intentar enviar via instancia multi-usuario
+                const instanceManager = global.whatsappInstanceManager;
+                if (instanceManager && userId) {
+                    result = await instanceManager.sendMessage(userId, formattedPhone, message);
+                } else if (instanceManager) {
+                    // Usar la primera instancia conectada disponible
+                    const instances = instanceManager.instances;
+                    if (instances && instances.size > 0) {
+                        const firstUserId = instances.keys().next().value;
+                        result = await instanceManager.sendMessage(firstUserId, formattedPhone, message);
+                    } else if (global.whatsappBot?.sock) {
+                        result = await global.whatsappBot.sock.sendMessage(formattedPhone, { text: message });
+                    } else {
+                        return res.status(503).json({ error: 'No hay instancia de WhatsApp conectada' });
+                    }
+                } else if (global.whatsappBot?.sock) {
+                    result = await global.whatsappBot.sock.sendMessage(formattedPhone, { text: message });
+                } else {
+                    return res.status(503).json({ error: 'No hay instancia de WhatsApp conectada' });
+                }
+
+                const messageId = result?.key?.id || null;
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                await logger.log('soporte', message, cleanPhone, 'API Externa', false, null, null, messageId);
+
+                res.json({
+                    success: true,
+                    messageId,
+                    phone: cleanPhone,
+                    message: 'Mensaje enviado correctamente'
+                });
+            } catch (error) {
+                console.error('Error en endpoint externo send-message:', error);
+                res.status(500).json({ error: 'Error enviando mensaje', details: error.message });
+            }
+        });
+
         // ===== TODAS LAS DEMÁS RUTAS REQUIEREN AUTENTICACIÓN =====
         this.app.use('/api', requireAuth);
 
