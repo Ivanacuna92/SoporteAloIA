@@ -1,166 +1,236 @@
-@import url('https://fonts.googleapis.com/css2?family=Merriweather+Sans:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────
+   Design tokens (Aloia Support · glassmorphism)
+   ────────────────────────────────────────────── */
+
+/* Light theme (default) */
 :root {
-  --bg-primary: #FAFBFC;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #F3F4F6;
-  --bg-hover: #ffffff;
-  --bg-selected: rgba(0, 161, 156, 0.08);
+  --transition: 0.22s ease;
 
-  --border-primary: #E8EBED;
-  --border-secondary: #E0E0E0;
+  /* Mockup tokens (named to match mockup) */
+  --bg-base:       #f4f4f8;
+  --bg-surface:    rgba(255,255,255,.85);
+  --bg-surface2:   rgba(255,255,255,1);
+  --bg-active:     rgba(99,102,241,.10);
+  --bg-input:      #eeeef6;
+  --bg-msg-in:     #ffffff;
+  --bg-msg-out:    #4f46e5;
+  --bg-hover-soft: rgba(99,102,241,.06);
 
-  --text-primary: #1F2937;
-  --text-secondary: #6B7280;
-  --text-tertiary: #9CA3AF;
+  --border:        rgba(0,0,0,.08);
+  --border-active: rgba(99,102,241,.30);
 
-  --brand-primary: #00A19C;
-  --brand-primary-dark: #00827E;
+  --accent:        #4f46e5;
+  --accent2:       #0891b2;
+  --badge-accent:  #4f46e5;
 
-  --msg-client-bg: #ffffff;
-  --msg-client-border: #E8EBED;
-  --msg-client-shadow: rgba(0, 0, 0, 0.08);
+  --glow-a:        rgba(99,102,241,.07);
+  --glow-b:        rgba(0,200,160,.05);
+  --scrollbar:     rgba(0,0,0,.08);
 
-  --msg-own-bg: rgba(0, 161, 156, 0.1);
-  --msg-own-shadow: rgba(0, 161, 156, 0.08);
-  --msg-own-text: #1F2937;
-  --msg-own-secondary: #6B7280;
-  --msg-own-border: rgba(0, 161, 156, 0.2);
+  /* Legacy aliases — existing components still reference these names */
+  --bg-primary:    var(--bg-base);
+  --bg-secondary:  var(--bg-surface);
+  --bg-tertiary:   var(--bg-input);
+  --bg-hover:      var(--bg-hover-soft);
+  --bg-selected:   var(--bg-active);
 
-  --shadow-sm: rgba(0, 0, 0, 0.02);
-  --shadow-md: rgba(0, 0, 0, 0.08);
-  --shadow-lg: rgba(0, 0, 0, 0.15);
+  --border-primary:   var(--border);
+  --border-secondary: var(--border);
 
-  --focus-ring: rgba(0, 161, 156, 0.15);
-  --overlay-bg: rgba(0, 0, 0, 0.3);
+  --text-primary:   #18181f;
+  --text-secondary: #606078;
+  --text-tertiary:  #a0a0b8;
 
-  --input-bg: #ffffff;
-  --input-border: #E8EBED;
+  --brand-primary:      var(--accent);
+  --brand-primary-dark: #4338ca;
 
-  --badge-bg: #F3F4F6;
-  --scrollbar-thumb: #D1D5DB;
+  --msg-client-bg:     var(--bg-msg-in);
+  --msg-client-border: var(--border);
+  --msg-client-shadow: rgba(0,0,0,0.05);
+
+  --msg-own-bg:        var(--bg-msg-out);
+  --msg-own-shadow:    rgba(79,70,229,0.18);
+  --msg-own-text:      #ffffff;
+  --msg-own-secondary: rgba(255,255,255,.78);
+  --msg-own-border:    transparent;
+
+  --shadow-sm: rgba(0,0,0,0.04);
+  --shadow-md: rgba(0,0,0,0.10);
+  --shadow-lg: rgba(0,0,0,0.18);
+
+  --focus-ring: rgba(99,102,241,0.18);
+  --overlay-bg: rgba(15,15,25,0.45);
+
+  --input-bg:      var(--bg-input);
+  --input-border:  var(--border);
+
+  --badge-bg:      var(--badge-accent);
+  --scrollbar-thumb: var(--scrollbar);
 }
 
+/* Dark theme */
 html.dark {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --bg-hover: #1e293b;
-  --bg-selected: rgba(0, 161, 156, 0.15);
+  --bg-base:       #09090f;
+  --bg-surface:    rgba(255,255,255,.045);
+  --bg-surface2:   rgba(255,255,255,.07);
+  --bg-active:     rgba(99,102,241,.18);
+  --bg-input:      #12131c;
+  --bg-msg-in:     #151822;
+  --bg-msg-out:    #4f46e5;
+  --bg-hover-soft: rgba(255,255,255,.04);
 
-  --border-primary: #334155;
-  --border-secondary: #475569;
+  --border:        rgba(255,255,255,.07);
+  --border-active: rgba(99,102,241,.28);
 
-  --text-primary: #F1F5F9;
-  --text-secondary: #94A3B8;
-  --text-tertiary: #64748B;
+  --accent:        #6366f1;
+  --accent2:       #06b6d4;
+  --badge-accent:  rgba(99,102,241,.9);
 
-  --brand-primary: #00C4BE;
-  --brand-primary-dark: #00A19C;
+  --glow-a:        rgba(99,102,241,.13);
+  --glow-b:        rgba(0,255,200,.07);
+  --scrollbar:     rgba(255,255,255,.06);
 
-  --msg-client-bg: #202c33;
-  --msg-client-border: #2a3942;
-  --msg-client-shadow: rgba(0, 0, 0, 0.25);
+  --text-primary:  #f0f0f5;
+  --text-secondary:#9191a8;
+  --text-tertiary: #5a5a72;
 
-  --msg-own-bg: rgba(0, 196, 190, 0.12);
-  --msg-own-shadow: rgba(0, 196, 190, 0.08);
-  --msg-own-text: #F1F5F9;
-  --msg-own-secondary: #94A3B8;
-  --msg-own-border: rgba(0, 196, 190, 0.25);
+  --brand-primary:      var(--accent);
+  --brand-primary-dark: #4338ca;
 
-  --shadow-sm: rgba(0, 0, 0, 0.2);
-  --shadow-md: rgba(0, 0, 0, 0.3);
-  --shadow-lg: rgba(0, 0, 0, 0.5);
+  --msg-client-shadow: rgba(0,0,0,0.25);
+  --msg-own-shadow:    rgba(99,102,241,0.25);
+  --msg-own-text:      #ffffff;
+  --msg-own-secondary: rgba(255,255,255,.78);
+  --msg-own-border:    transparent;
 
-  --focus-ring: rgba(0, 196, 190, 0.25);
-  --overlay-bg: rgba(0, 0, 0, 0.5);
+  --shadow-sm: rgba(0,0,0,0.18);
+  --shadow-md: rgba(0,0,0,0.30);
+  --shadow-lg: rgba(0,0,0,0.55);
 
-  --input-bg: #1e293b;
-  --input-border: #334155;
-
-  --badge-bg: #334155;
-  --scrollbar-thumb: #475569;
+  --focus-ring: rgba(99,102,241,0.30);
+  --overlay-bg: rgba(0,0,0,0.6);
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* ──────────────────────────────────────────────
+   Base
+   ────────────────────────────────────────────── */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  transition: background var(--transition), color var(--transition);
 }
 
 body {
-  font-family: 'Futura PT', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  position: relative;
+  letter-spacing: -0.005em;
+}
+
+/* Ambient glow background (subtle radial gradients) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 0% 0%, var(--glow-a), transparent 38%),
+    radial-gradient(circle at 100% 100%, var(--glow-b), transparent 38%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
+  z-index: 1;
 }
 
-html, body {
-  overflow-x: hidden;
-  max-width: 100vw;
+/* ──────────────────────────────────────────────
+   Typography helpers
+   ────────────────────────────────────────────── */
+
+.mono, code, kbd, .msg-time-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Scrollbars globales */
+/* ──────────────────────────────────────────────
+   Glass surface utility
+   ────────────────────────────────────────────── */
+
+.glass-surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* ──────────────────────────────────────────────
+   Scrollbars
+   ────────────────────────────────────────────── */
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-*::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+*::-webkit-scrollbar      { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   border-radius: 3px;
 }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--text-tertiary); }
 
-*::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-tertiary);
-}
+/* ──────────────────────────────────────────────
+   Animations (preserved from prior version)
+   ────────────────────────────────────────────── */
 
 @keyframes slideUp {
   from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  to   { transform: translateY(0); }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
 
 @keyframes msgMenuPop {
-  0% { opacity: 0; transform: scale(0.6); }
+  0%   { opacity: 0; transform: scale(0.6); }
   100% { opacity: 1; transform: scale(1); }
 }
 
 @keyframes capsulePop {
-  0% { opacity: 0; transform: translateX(-8px) scale(0.85); }
-  60% { opacity: 1; transform: translateX(2px) scale(1.02); }
+  0%   { opacity: 0; transform: translateX(-8px) scale(0.85); }
+  60%  { opacity: 1; transform: translateX(2px) scale(1.02); }
   100% { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 @keyframes capsuleFade {
-  0% { opacity: 1; transform: scale(1); }
+  0%   { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(0.9) translateY(-4px); }
 }
 
 @keyframes msgHighlight {
-  0% { box-shadow: 0 0 0 0 rgba(0, 161, 156, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(0, 161, 156, 0.15); }
-  100% { box-shadow: 0 0 0 3px rgba(0, 161, 156, 0.1); }
+  0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  50%  { box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15); }
+  100% { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.10); }
+}
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40%            { transform: translateY(-5px); }
 }

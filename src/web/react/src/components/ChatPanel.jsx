@@ -946,15 +946,38 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
 
   if (!contact) {
     return (
-      <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <div className="text-center">
-          <div className="mb-4">
-            <svg className="w-20 h-20 mx-auto text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center" style={{ padding: '40px' }}>
+          <div
+            className="mx-auto flex items-center justify-center"
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 22,
+              background: 'var(--bg-active)',
+              border: '1px solid var(--border-active)',
+              marginBottom: 18,
+            }}
+          >
+            <i className="ti ti-messages" style={{ fontSize: 32, color: 'var(--accent)' }} />
           </div>
-          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-2">Selecciona un chat</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Elige una conversación de la lista para comenzar</p>
+          <h3 style={{
+            fontFamily: 'Sora, sans-serif',
+            fontSize: 18,
+            fontWeight: 700,
+            letterSpacing: '-0.2px',
+            color: 'var(--text-primary)',
+            marginBottom: 6,
+          }}>
+            Selecciona una conversación
+          </h3>
+          <p style={{
+            fontFamily: 'Sora, sans-serif',
+            fontSize: 13,
+            color: 'var(--text-secondary)',
+          }}>
+            Elige un grupo o contacto de la lista para comenzar
+          </p>
         </div>
       </div>
     );
@@ -997,61 +1020,80 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               </svg>
             </button>
           )}
-          <div className="relative" style={{ backgroundColor: '#ffffff', borderRadius: '9999px', width: 'fit-content' }}>
+          <div className="relative flex-shrink-0">
             {contact.isGroup && contact.groupPicture ? (
               <img
                 src={contact.groupPicture}
                 alt={contact.groupName || 'Grupo'}
-                className="w-12 h-12 rounded-full object-cover"
                 style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 13,
+                  objectFit: 'cover',
                   opacity: contact.leftGroup ? 0.6 : 1,
-                  border: '2px solid var(--bg-secondary)'
                 }}
                 onError={(e) => {
-                  // Si la imagen falla, ocultar y mostrar el fallback
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'flex';
                 }}
               />
             ) : null}
-            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{
-              background: contact.leftGroup
-                ? 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)'
-                : contact.isGroup
-                ? 'linear-gradient(135deg, #00A19C 0%, #00827E 100%)'
-                : isSupport
-                ? 'linear-gradient(135deg, #00A19C 0%, #00827E 100%)'
-                : 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-              opacity: contact.leftGroup ? 0.6 : 1,
-              display: contact.isGroup && contact.groupPicture ? 'none' : 'flex'
-            }}>
+            <div
+              className="flex items-center justify-center"
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 13,
+                background: contact.leftGroup
+                  ? 'rgba(107,114,128,0.18)'
+                  : 'var(--bg-active)',
+                color: contact.leftGroup ? 'var(--text-tertiary)' : 'var(--accent)',
+                opacity: contact.leftGroup ? 0.6 : 1,
+                display: contact.isGroup && contact.groupPicture ? 'none' : 'flex',
+              }}
+            >
               {contact.isGroup ? (
-                <span className="text-lg font-bold">{(contact.groupName || 'G').charAt(0).toUpperCase()}</span>
+                <i className="ti ti-users-group" style={{ fontSize: 20 }} />
               ) : isSupport ? (
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd"/>
-                </svg>
+                <i className="ti ti-headset" style={{ fontSize: 20 }} />
               ) : (
-                contact.phone.slice(-2)
+                <span style={{ fontSize: 14, fontWeight: 700 }}>{contact.phone.slice(-2)}</span>
               )}
             </div>
-            {/* Indicador de modo */}
-            {!contact.leftGroup && (
-              <div
-                className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white"
-                style={{ background: modeColor }}
-              ></div>
-            )}
           </div>
           <div className="flex-1 min-w-0 cursor-pointer" onClick={openContactInfo} title="Ver información del contacto">
-            <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-100 truncate hover:underline">
-                {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
-              </h3>
+            <div style={{
+              fontFamily: 'Sora, sans-serif',
+              fontSize: 16,
+              fontWeight: 700,
+              letterSpacing: '-0.2px',
+              color: 'var(--text-primary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}>
+              {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
             </div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {contact.messages?.length || 0} mensajes
-            </span>
+            <div style={{
+              fontFamily: 'Sora, sans-serif',
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              marginTop: 2,
+            }}>
+              {!contact.leftGroup && (
+                <span style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: isSupport ? modeColor : '#22c55e',
+                  flexShrink: 0,
+                }} />
+              )}
+              {contact.leftGroup ? 'Ya no eres miembro' : `${contact.messages?.length || 0} mensajes`}
+            </div>
           </div>
         </div>
 
@@ -2043,21 +2085,30 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               </div>
             </div>
 
-            {/* Botón enviar circular */}
+            {/* Botón enviar con gradient indigo */}
             <button
               onClick={handleSend}
               disabled={sending || sendingMedia}
-              className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0"
+              aria-label="Enviar mensaje"
+              className="flex items-center justify-center transition-all flex-shrink-0"
               style={{
-                background: 'var(--brand-primary)',
+                width: 38,
+                height: 38,
+                borderRadius: 11,
+                background: 'linear-gradient(135deg, var(--accent), var(--brand-primary-dark))',
+                border: 'none',
+                color: '#fff',
+                cursor: sending || sendingMedia ? 'wait' : 'pointer',
+                opacity: sending || sendingMedia ? 0.7 : 1,
+                boxShadow: '0 6px 20px rgba(99,102,241,0.25)',
               }}
+              onMouseEnter={(e) => { if (!sending && !sendingMedia) { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'scale(1.04)'; } }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = sending || sendingMedia ? '0.7' : '1'; e.currentTarget.style.transform = 'scale(1)'; }}
             >
               {sending || sendingMedia ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
-                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                </svg>
+                <i className="ti ti-send-2" style={{ fontSize: 18 }} />
               )}
             </button>
           </div>

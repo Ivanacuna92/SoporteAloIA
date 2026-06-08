@@ -262,141 +262,149 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     });
 
   if (loading) {
-    return <div className="w-full md:w-96 flex items-center justify-center" style={{ background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-primary)' }}>
-      <span style={{ color: 'var(--text-secondary)' }}>Cargando contactos...</span>
+    return <div className="w-full md:w-[300px] flex items-center justify-center">
+      <span style={{ color: 'var(--text-secondary)', fontFamily: 'Sora, sans-serif', fontSize: 13 }}>Cargando contactos...</span>
     </div>;
   }
 
   return (
-    <div className="w-full md:w-96 flex flex-col overflow-hidden max-w-full" style={{
-      background: 'var(--bg-primary)',
-      borderRight: '1px solid var(--border-primary)'
-    }}>
+    <div className="w-full md:w-[300px] flex flex-col overflow-hidden max-w-full">
       <audio ref={audioRef} src={notificationSound} preload="auto" />
       <audio ref={alexisAudioRef} src={alexisSound} preload="auto" />
 
       {/* Header */}
-      <div className="p-4 md:p-6 pb-4 flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Conversaciones</h2>
+      <div className="flex items-center justify-between" style={{ padding: '22px 20px 14px' }}>
+        <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>
+          Soporte
+        </span>
+        <div className="flex gap-1">
           <button
-            onClick={() => {
-              const isDark = document.documentElement.classList.toggle('dark');
-              localStorage.setItem('darkMode', isDark);
-              const meta = document.querySelector('meta[name="theme-color"]');
-              if (meta) meta.setAttribute('content', isDark ? '#0f172a' : '#FAFBFC');
-            }}
-            className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
-            style={{
-              background: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)'
-            }}
+            type="button"
+            title="Filtrar"
+            aria-label="Filtrar"
+            className="rounded-[9px] flex items-center justify-center transition-all"
+            style={{ width: 32, height: 32, background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
           >
-            <svg className="w-4 h-4 hidden dark:block" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd"/>
-            </svg>
-            <svg className="w-4 h-4 block dark:hidden" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
-            </svg>
-          </button>
-        </div>
-
-        <div className="relative w-full">
-          <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--text-tertiary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Buscar contacto o mensaje..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl transition-all focus:outline-none text-sm box-border"
-            style={{
-              background: 'var(--bg-tertiary)',
-              border: '1px solid transparent',
-              color: 'var(--text-primary)',
-            }}
-            onFocus={(e) => {
-              e.target.style.background = 'var(--bg-secondary)';
-              e.target.style.border = '1px solid var(--brand-primary)';
-              e.target.style.boxShadow = '0 0 0 3px var(--focus-ring)';
-            }}
-            onBlur={(e) => {
-              e.target.style.background = 'var(--bg-tertiary)';
-              e.target.style.border = '1px solid transparent';
-              e.target.style.boxShadow = 'none';
-            }}
-          />
-        </div>
-
-        {/* Tabs de filtro */}
-        <div className="flex items-center gap-2 mt-3">
-          <button
-            onClick={() => setActiveFilter('all')}
-            className="px-3 py-1 rounded-full text-xs font-medium transition-all"
-            style={{
-              background: activeFilter === 'all' ? 'var(--brand-primary)' : 'var(--bg-tertiary)',
-              color: activeFilter === 'all' ? 'white' : 'var(--text-secondary)',
-            }}
-          >
-            Todos
+            <i className="ti ti-adjustments-horizontal" style={{ fontSize: 18 }} />
           </button>
           <button
-            onClick={() => setActiveFilter('unread')}
-            className="px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1.5"
-            style={{
-              background: activeFilter === 'unread' ? 'var(--brand-primary)' : 'var(--bg-tertiary)',
-              color: activeFilter === 'unread' ? 'white' : 'var(--text-secondary)',
-            }}
+            type="button"
+            title="Nuevo chat"
+            aria-label="Nuevo chat"
+            className="rounded-[9px] flex items-center justify-center transition-all"
+            style={{ width: 32, height: 32, background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
           >
-            No leídos
-            {totalUnread > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold" style={{
-                background: activeFilter === 'unread' ? 'white' : 'var(--brand-primary)',
-                color: activeFilter === 'unread' ? 'var(--brand-primary)' : 'white',
-              }}>
-                {totalUnread > 99 ? '99+' : totalUnread}
-              </span>
-            )}
+            <i className="ti ti-edit" style={{ fontSize: 18 }} />
           </button>
-          <button
-            onClick={() => setActiveFilter('archived')}
-            className="px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1.5"
-            style={{
-              background: activeFilter === 'archived' ? 'var(--brand-primary)' : 'var(--bg-tertiary)',
-              color: activeFilter === 'archived' ? 'white' : 'var(--text-secondary)',
-            }}
-            title="Conversaciones archivadas"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-            </svg>
-            Archivados
-            {archivedCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold" style={{
-                background: activeFilter === 'archived' ? 'white' : 'var(--text-tertiary)',
-                color: activeFilter === 'archived' ? 'var(--brand-primary)' : 'white',
-              }}>
-                {archivedCount}
-              </span>
-            )}
-          </button>
-          {totalUnread > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="ml-auto text-xs font-medium transition-all hover:underline"
-              style={{ color: 'var(--brand-primary)' }}
-            >
-              Marcar leídos
-            </button>
-          )}
         </div>
       </div>
 
+      {/* Search */}
+      <div style={{ padding: '0 16px 14px' }}>
+        <div
+          className="flex items-center gap-2 rounded-[12px] transition-colors"
+          style={{
+            background: 'var(--bg-input)',
+            padding: '10px 14px',
+            border: '1px solid transparent',
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--border-active)'; }}
+        >
+          <i className="ti ti-search" style={{ fontSize: 16, color: 'var(--text-tertiary)', flexShrink: 0 }} />
+          <input
+            type="text"
+            placeholder="Buscar grupo o contacto..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full focus:outline-none"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+              fontFamily: 'Sora, sans-serif',
+              fontSize: 13,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Filter pills */}
+      <div className="flex gap-[6px]" style={{ padding: '0 16px 14px', flexWrap: 'wrap' }}>
+        {[
+          { id: 'all',      label: 'Todos',      count: null },
+          { id: 'unread',   label: 'No leídos',  count: totalUnread > 0 ? totalUnread : null },
+          { id: 'archived', label: 'Archivados', count: archivedCount > 0 ? archivedCount : null, icon: 'ti-archive' },
+        ].map((p) => {
+          const isActive = activeFilter === p.id;
+          return (
+            <button
+              key={p.id}
+              onClick={() => setActiveFilter(p.id)}
+              className="flex items-center gap-1.5 transition-all"
+              style={{
+                padding: '5px 12px',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 500,
+                fontFamily: 'Sora, sans-serif',
+                cursor: 'pointer',
+                background: isActive ? 'var(--bg-active)' : 'transparent',
+                border: `1px solid ${isActive ? 'var(--border-active)' : 'var(--border)'}`,
+                color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {p.icon && <i className={`ti ${p.icon}`} style={{ fontSize: 13 }} />}
+              {p.label}
+              {p.count !== null && (
+                <span
+                  style={{
+                    background: isActive ? 'var(--accent)' : 'var(--text-tertiary)',
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: 999,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {p.count > 99 ? '99+' : p.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {totalUnread > 0 && (
+          <button
+            onClick={markAllAsRead}
+            className="ml-auto transition-all"
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--accent)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '5px 4px',
+              fontFamily: 'Sora, sans-serif',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+            onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+          >
+            Marcar leídos
+          </button>
+        )}
+      </div>
+
       {/* Lista de contactos */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 md:px-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '6px 10px' }}>
         {filteredContacts.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: 'var(--text-tertiary)' }}>
+          <div className="text-center text-sm" style={{ padding: '48px 0', color: 'var(--text-tertiary)' }}>
             {activeFilter === 'archived'
               ? 'No hay conversaciones archivadas'
               : activeFilter === 'unread'
@@ -404,48 +412,40 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               : 'No hay contactos'}
           </div>
         ) : (
-          filteredContacts.map(contact => (
+          filteredContacts.map(contact => {
+            const isSelected = selectedContact?.phone === contact.phone;
+            return (
             <div
               key={contact.phone}
-              className="mb-1 rounded-xl cursor-pointer transition-all duration-200 w-full"
+              className="cursor-pointer transition-all duration-200 w-full"
               style={{
-                background: selectedContact?.phone === contact.phone
-                  ? 'var(--bg-selected)'
-                  : 'transparent',
-                boxShadow: selectedContact?.phone === contact.phone
-                  ? '0 2px 8px var(--shadow-md)'
-                  : 'none',
-                border: selectedContact?.phone === contact.phone
-                  ? '1px solid var(--border-primary)'
-                  : '1px solid transparent'
+                marginBottom: 4,
+                padding: '13px 12px',
+                borderRadius: 16,
+                background: isSelected ? 'var(--bg-active)' : 'transparent',
+                border: `1px solid ${isSelected ? 'var(--border-active)' : 'transparent'}`,
               }}
               onMouseEnter={(e) => {
-                if (selectedContact?.phone !== contact.phone) {
-                  e.currentTarget.style.background = 'var(--bg-hover)';
-                  e.currentTarget.style.boxShadow = '0 2px 6px var(--shadow-sm)';
-                  e.currentTarget.style.border = '1px solid var(--border-primary)';
-                }
+                if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)';
               }}
               onMouseLeave={(e) => {
-                if (selectedContact?.phone !== contact.phone) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.boxShadow = 'none';
-                  e.currentTarget.style.border = '1px solid transparent';
-                }
+                if (!isSelected) e.currentTarget.style.background = 'transparent';
               }}
               onClick={() => handleSelectContact(contact)}
             >
-              <div className="flex items-center p-3 w-full min-w-0">
-                {/* Avatar */}
-                <div className="relative mr-3 flex-shrink-0" style={contact.isGroup && contact.groupPicture ? { backgroundColor: '#ffffff', borderRadius: '9999px', width: 'fit-content' } : undefined}>
+              <div className="flex items-center w-full min-w-0" style={{ gap: 10 }}>
+                {/* Avatar (rounded square) */}
+                <div className="relative flex-shrink-0">
                   {contact.isGroup && contact.groupPicture ? (
                     <img
                       src={contact.groupPicture}
                       alt={contact.groupName || 'Grupo'}
-                      className="w-12 h-12 rounded-full object-cover"
                       style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 12,
+                        objectFit: 'cover',
                         opacity: contact.leftGroup ? 0.6 : 1,
-                        border: '2px solid var(--bg-secondary)'
                       }}
                       onError={(e) => {
                         e.target.style.display = 'none';
@@ -454,30 +454,41 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                     />
                   ) : null}
                   <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                    className="flex items-center justify-center font-semibold"
                     style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      fontSize: 12,
                       background: contact.leftGroup
-                        ? 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)'
+                        ? 'rgba(107,114,128,0.18)'
                         : contact.mode === 'support'
-                        ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)'
-                        : 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%)',
+                        ? 'rgba(245,158,11,0.18)'
+                        : 'var(--bg-active)',
+                      color: contact.leftGroup
+                        ? 'var(--text-tertiary)'
+                        : contact.mode === 'support'
+                        ? '#f59e0b'
+                        : 'var(--accent)',
                       opacity: contact.leftGroup ? 0.6 : 1,
-                      display: contact.isGroup && contact.groupPicture ? 'none' : 'flex'
+                      display: contact.isGroup && contact.groupPicture ? 'none' : 'flex',
                     }}
                   >
                     {contact.isGroup
-                      ? (contact.groupName || 'G').charAt(0).toUpperCase()
+                      ? (contact.groupName || 'G').slice(0, 2).toUpperCase()
                       : contact.phone.slice(-2)
                     }
                   </div>
                   {!contact.leftGroup && (contact.mode === 'support' || getUnreadCount(contact) > 0) && (
                     <div
-                      className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
+                      className="absolute bottom-0 right-0 rounded-full"
                       style={{
-                        background: contact.mode === 'support' ? '#F97316' : 'var(--brand-primary)',
-                        borderColor: selectedContact?.phone === contact.phone ? 'var(--bg-secondary)' : 'var(--bg-primary)'
+                        width: 10,
+                        height: 10,
+                        background: contact.mode === 'support' ? '#f59e0b' : 'var(--accent)',
+                        border: '2px solid var(--bg-base)',
                       }}
-                    ></div>
+                    />
                   )}
                 </div>
 
@@ -542,7 +553,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ContactsList from './components/ContactsList';
 import ChatPanel from './components/ChatPanel';
+import AppSidebar from './components/AppSidebar';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
 import QRDisplay from './components/QRDisplay';
@@ -36,7 +37,7 @@ function App() {
     localStorage.setItem('darkMode', darkMode);
     // Update theme-color meta tag
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', darkMode ? '#0f172a' : '#FAFBFC');
+    if (meta) meta.setAttribute('content', darkMode ? '#09090f' : '#f4f4f8');
   }, [darkMode]);
 
   // PWA install prompt
@@ -225,8 +226,15 @@ function App() {
           </div>
         </>
       )}
-      <div className="flex flex-1 overflow-hidden max-w-full">
-          <div className={`${selectedContact ? 'hidden md:flex' : 'flex'} flex-shrink-0 w-full md:w-auto max-w-full`}>
+      <div className="flex flex-1 overflow-hidden max-w-full md:p-[14px] md:gap-[14px]">
+          <AppSidebar
+            currentView={currentView}
+            onViewChange={setCurrentView}
+            darkMode={darkMode}
+            onToggleDarkMode={() => setDarkMode(d => !d)}
+            onLogout={handleLogout}
+          />
+          <div className={`${selectedContact ? 'hidden md:flex' : 'flex'} flex-shrink-0 w-full md:w-[300px] max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
             <ContactsList
               contacts={contacts}
               setContacts={setContacts}
@@ -234,7 +242,7 @@ function App() {
               onSelectContact={setSelectedContact}
             />
           </div>
-          <div className={`${selectedContact ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 max-w-full`}>
+          <div className={`${selectedContact ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
             <ChatPanel
               contact={selectedContact}
               onUpdateContact={(updatedContact) => {
