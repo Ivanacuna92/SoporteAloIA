@@ -1087,6 +1087,47 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
             )}
           </button>
 
+          {/* Botón de archivar/desarchivar */}
+          <button
+            onClick={async () => {
+              if (archivingContact) return;
+              setArchivingContact(true);
+              const nextArchived = !contact.isArchived;
+              try {
+                await archiveContact(contact.phone, nextArchived);
+                onUpdateContact({ ...contact, isArchived: nextArchived });
+              } catch (error) {
+                setErrorMessage(
+                  (nextArchived ? 'Error archivando: ' : 'Error desarchivando: ') + error.message
+                );
+                setShowErrorModal(true);
+              } finally {
+                setArchivingContact(false);
+              }
+            }}
+            disabled={archivingContact}
+            title={contact.isArchived
+              ? (contact.isGroup ? 'Desarchivar grupo' : 'Desarchivar conversación')
+              : (contact.isGroup ? 'Archivar grupo' : 'Archivar conversación')}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
+            style={{
+              background: contact.isArchived ? 'rgba(253, 97, 68, 0.1)' : 'transparent',
+              color: contact.isArchived ? 'var(--brand-primary)' : 'var(--text-secondary)',
+              opacity: archivingContact ? 0.6 : 1,
+              cursor: archivingContact ? 'wait' : 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              if (!contact.isArchived) e.currentTarget.style.background = 'rgba(107, 114, 128, 0.1)';
+            }}
+            onMouseLeave={(e) => {
+              if (!contact.isArchived) e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+          </button>
+
           {/* Botón de menú de opciones (3 puntos) */}
           <div className="relative" ref={optionsMenuRef}>
             <button
