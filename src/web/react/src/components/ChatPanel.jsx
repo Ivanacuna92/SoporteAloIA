@@ -346,6 +346,12 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const recordingStartRef = useRef(0);
   const [sendingMedia, setSendingMedia] = useState(false);
   const [messageMenuOpen, setMessageMenuOpen] = useState(null); // ID del mensaje con menú abierto
   const [menuClosing, setMenuClosing] = useState(null); // ID del menú que se está cerrando
@@ -808,6 +814,63 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     } finally {
       setSendingMedia(false);
     }
+  };
+
+  // Grabacion de audio (voice note) via MediaRecorder
+  const startAudioRecording = async () => {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      setErrorMessage('Tu navegador no soporta grabacion de audio');
+      setShowErrorModal(true);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeCandidates = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/mp4'];
+      const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        if (blob.size > 500) {
+          const ext = (recorder.mimeType || 'audio/webm').includes('ogg') ? 'ogg' : 'webm';
+          const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: blob.type });
+          setSendingMedia(true);
+          try {
+            await sendMyAudio(contact.phone, file, true);
+          } catch (error) {
+            setErrorMessage(`Error enviando audio: ${error.message}`);
+            setShowErrorModal(true);
+          } finally {
+            setSendingMedia(false);
+          }
+        }
+      };
+      mediaRecorderRef.current = recorder;
+      recordingStartRef.current = Date.now();
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(Math.floor((Date.now() - recordingStartRef.current) / 1000));
+      }, 250);
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      setErrorMessage(err.name === 'NotAllowedError' ? 'Permiso de microfono denegado' : `No se pudo iniciar grabacion: ${err.message}`);
+      setShowErrorModal(true);
+    }
+  };
+
+  const stopAudioRecording = (cancel = false) => {
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    setIsRecording(false);
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    if (cancel) {
+      audioChunksRef.current = [];
+      try { recorder.ondataavailable = null; recorder.onstop = () => { recorder.stream?.getTracks().forEach((t) => t.stop()); }; } catch {}
+    }
+    try { recorder.stop(); } catch {}
   };
 
   const handleAttachClick = (type) => {
@@ -1933,16 +1996,24 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               {/* Iconos de adjuntar inline (mismo color) */}
               <div className="flex items-center gap-0.5 flex-shrink-0 mr-1">
                 {[
-                  { type: 'image',    icon: 'ti-photo',      label: 'Imagen' },
-                  { type: 'video',    icon: 'ti-video',      label: 'Video' },
-                  { type: 'document', icon: 'ti-file-text',  label: 'Documento' },
-                  { type: 'audio',    icon: 'ti-microphone', label: 'Audio' },
-                  { type: 'sticker',  icon: 'ti-mood-smile', label: 'Stickers' },
+                  { type: 'image',    icon: 'ti-photo',          label: 'Imagen' },
+                  { type: 'document', icon: 'ti-file-text',      label: 'Documento' },
+                  { type: 'audio',    icon: isRecording ? 'ti-player-stop-filled' : 'ti-microphone', label: isRecording ? 'Detener y enviar' : 'Grabar audio', recording: true },
+                  { type: 'sticker',  icon: 'ti-mood-smile',     label: 'Stickers' },
                 ].map((t) => (
                   <button
                     key={t.type}
-                    onClick={() => t.type === 'sticker' ? openStickerCollection() : handleAttachClick(t.type)}
-                    disabled={sendingMedia}
+                    onClick={() => {
+                      if (t.recording) {
+                        if (isRecording) stopAudioRecording(false);
+                        else startAudioRecording();
+                      } else if (t.type === 'sticker') {
+                        openStickerCollection();
+                      } else {
+                        handleAttachClick(t.type);
+                      }
+                    }}
+                    disabled={sendingMedia && !isRecording}
                     title={t.label}
                     aria-label={t.label}
                     className="flex items-center justify-center transition-all disabled:opacity-50 flex-shrink-0"
@@ -1950,17 +2021,54 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       width: 30,
                       height: 30,
                       borderRadius: '50%',
-                      background: 'transparent',
+                      background: (t.recording && isRecording) ? 'rgba(239,68,68,0.15)' : 'transparent',
                       border: 'none',
-                      color: 'var(--accent)',
-                      cursor: sendingMedia ? 'wait' : 'pointer',
+                      color: (t.recording && isRecording) ? '#ef4444' : 'var(--accent)',
+                      cursor: (sendingMedia && !isRecording) ? 'wait' : 'pointer',
+                      animation: (t.recording && isRecording) ? 'msgHighlight 1.4s ease-in-out infinite' : 'none',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-active)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    onMouseEnter={(e) => { if (!(t.recording && isRecording)) e.currentTarget.style.background = 'var(--bg-active)'; }}
+                    onMouseLeave={(e) => { if (!(t.recording && isRecording)) e.currentTarget.style.background = 'transparent'; }}
                   >
                     <i className={`ti ${t.icon}`} style={{ fontSize: 16 }} />
                   </button>
                 ))}
+                {isRecording && (
+                  <>
+                    <span
+                      className="mono"
+                      style={{
+                        fontSize: 11,
+                        color: '#ef4444',
+                        fontWeight: 600,
+                        marginLeft: 4,
+                        minWidth: 32,
+                      }}
+                    >
+                      {String(Math.floor(recordingDuration / 60)).padStart(2,'0')}:{String(recordingDuration % 60).padStart(2,'0')}
+                    </span>
+                    <button
+                      onClick={() => stopAudioRecording(true)}
+                      title="Cancelar grabacion"
+                      aria-label="Cancelar grabacion"
+                      className="flex items-center justify-center flex-shrink-0"
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-tertiary)',
+                        cursor: 'pointer',
+                        marginLeft: 2,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+                    >
+                      <i className="ti ti-x" style={{ fontSize: 14 }} />
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="flex-1 min-w-0 relative flex items-center">
