@@ -54,11 +54,12 @@
   --msg-client-border: var(--border);
   --msg-client-shadow: rgba(0,0,0,0.05);
 
-  --msg-own-bg:        var(--bg-msg-out);
-  --msg-own-shadow:    rgba(79,70,229,0.18);
-  --msg-own-text:      #ffffff;
-  --msg-own-secondary: rgba(255,255,255,.78);
-  --msg-own-border:    transparent;
+  /* Light mode: bubble propio claro con texto oscuro (mejor legibilidad en fondo blanco) */
+  --msg-own-bg:        rgba(99,102,241,0.10);
+  --msg-own-shadow:    rgba(99,102,241,0.10);
+  --msg-own-text:      var(--text-primary);
+  --msg-own-secondary: var(--text-secondary);
+  --msg-own-border:    rgba(99,102,241,0.25);
 
   --shadow-sm: rgba(0,0,0,0.04);
   --shadow-md: rgba(0,0,0,0.10);
@@ -104,7 +105,10 @@ html.dark {
   --brand-primary-dark: #4338ca;
 
   --msg-client-shadow: rgba(0,0,0,0.25);
-  --msg-own-shadow:    rgba(99,102,241,0.25);
+
+  /* Dark mode: bubble propio indigo sólido con texto blanco */
+  --msg-own-bg:        #4f46e5;
+  --msg-own-shadow:    rgba(99,102,241,0.30);
   --msg-own-text:      #ffffff;
   --msg-own-secondary: rgba(255,255,255,.78);
   --msg-own-border:    transparent;
