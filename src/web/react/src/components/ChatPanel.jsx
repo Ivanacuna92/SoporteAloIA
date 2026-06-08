@@ -1952,11 +1952,11 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       borderRadius: '50%',
                       background: 'transparent',
                       border: 'none',
-                      color: 'var(--text-tertiary)',
+                      color: 'var(--accent)',
                       cursor: sendingMedia ? 'wait' : 'pointer',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-active)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
                     <i className={`ti ${t.icon}`} style={{ fontSize: 16 }} />
                   </button>
