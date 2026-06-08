@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { getMyContacts, getMuteStates } from '../services/api';
-import notificationSound from '../assets/ulinotificacion.opus';
+import notificationSound from '../assets/notichida.mp3';
 import alexisSound from '../assets/alexis.mp3';
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact, activeFilter: externalFilter, setActiveFilter: externalSetFilter, hideFilterPills = false }) {
