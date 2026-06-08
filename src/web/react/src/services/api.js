@@ -881,6 +881,22 @@ export async function sendStickerFromUrl(phone, stickerUrl) {
   return response.json();
 }
 
+
+// Archivar / desarchivar una conversacion del usuario actual
+export async function archiveContact(phone, archived) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/archive-contact`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, archived })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error archivando contacto');
+  }
+
+  return response.json();
+}
+
 // Enviar mensaje con opciones avanzadas (menciones, responder)
 export async function sendMessageAdvanced(phone, message, options = {}) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message-advanced`, {

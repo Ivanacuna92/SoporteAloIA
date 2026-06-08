@@ -298,6 +298,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         isGroup: assignment.is_group || false, // Ahora puede ser grupo
                         groupName: assignment.group_name,
                         groupPicture: assignment.group_picture, // URL de la imagen del grupo
+                        isArchived: Boolean(assignment.is_archived),
                         messages: messages.reverse(), // Orden cronológico
                         totalMessages: messages.length,
                         userMessages: messages.filter(m => m.type === 'USER' || m.role === 'cliente').length,
@@ -1195,6 +1196,45 @@ module.exports = function(app, requireAuth, requireAdmin) {
             });
         } catch (error) {
             res.status(500).json({ error: 'Error obteniendo receipts', details: error.message });
+        }
+    });
+
+    // Archivar / desarchivar una conversacion (grupo o cliente) del usuario actual
+    app.post('/api/my-instance/archive-contact', requireAuth, async (req, res) => {
+        try {
+            const { phone, archived } = req.body;
+
+            if (!phone) {
+                return res.status(400).json({ error: 'phone es requerido' });
+            }
+
+            const cleanPhone = String(phone).replace('@s.whatsapp.net', '').replace('@g.us', '');
+            const isArchived = archived ? 1 : 0;
+
+            const result = await database.query(
+                `UPDATE client_assignments
+                 SET is_archived = ?
+                 WHERE support_user_id = ? AND client_phone = ?`,
+                [isArchived, req.user.id, cleanPhone]
+            );
+
+            if (!result || result.affectedRows === 0) {
+                return res.status(404).json({
+                    error: 'Conversacion no encontrada para este usuario'
+                });
+            }
+
+            res.json({
+                success: true,
+                phone: cleanPhone,
+                isArchived: Boolean(isArchived)
+            });
+        } catch (error) {
+            console.error('Error archivando contacto:', error);
+            res.status(500).json({
+                error: 'Error archivando contacto',
+                details: error.message
+            });
         }
     });
 };

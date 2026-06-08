@@ -8,7 +8,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [localContacts, setLocalContacts] = useState(contacts);
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread'
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread' | 'archived'
   const [lastReadMessages, setLastReadMessages] = useState(() => {
     const saved = localStorage.getItem('lastReadMessages');
     return saved ? JSON.parse(saved) : {};
@@ -213,7 +213,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     return unreadCount > 0 ? unreadCount : 0;
   };
 
-  const totalUnread = localContacts.reduce((sum, c) => sum + getUnreadCount(c), 0);
+  const totalUnread = localContacts.reduce((sum, c) => sum + (c.isArchived ? 0 : getUnreadCount(c)), 0);
+  const archivedCount = localContacts.filter(c => c.isArchived).length;
 
   const markAllAsRead = () => {
     const updated = {};
@@ -225,7 +226,12 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
   const filteredContacts = localContacts
     .filter(contact => {
-      if (activeFilter === 'unread' && getUnreadCount(contact) === 0) return false;
+      if (activeFilter === 'archived') {
+        if (!contact.isArchived) return false;
+      } else {
+        if (contact.isArchived) return false;
+        if (activeFilter === 'unread' && getUnreadCount(contact) === 0) return false;
+      }
 
       const searchLower = searchTerm.toLowerCase();
       if (!searchLower) return true;
@@ -353,6 +359,28 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveFilter('archived')}
+            className="px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: activeFilter === 'archived' ? 'var(--brand-primary)' : 'var(--bg-tertiary)',
+              color: activeFilter === 'archived' ? 'white' : 'var(--text-secondary)',
+            }}
+            title="Conversaciones archivadas"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            Archivados
+            {archivedCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold" style={{
+                background: activeFilter === 'archived' ? 'white' : 'var(--text-tertiary)',
+                color: activeFilter === 'archived' ? 'var(--brand-primary)' : 'white',
+              }}>
+                {archivedCount}
+              </span>
+            )}
+          </button>
           {totalUnread > 0 && (
             <button
               onClick={markAllAsRead}
@@ -368,7 +396,13 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       {/* Lista de contactos */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 md:px-3">
         {filteredContacts.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: 'var(--text-tertiary)' }}>No hay contactos</div>
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--text-tertiary)' }}>
+            {activeFilter === 'archived'
+              ? 'No hay conversaciones archivadas'
+              : activeFilter === 'unread'
+              ? 'No tienes mensajes sin leer'
+              : 'No hay contactos'}
+          </div>
         ) : (
           filteredContacts.map(contact => (
             <div
