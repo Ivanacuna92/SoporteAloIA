@@ -348,10 +348,14 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingLevels, setRecordingLevels] = useState(new Array(32).fill(0));
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
   const recordingStartRef = useRef(0);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const rafRef = useRef(null);
   const [sendingMedia, setSendingMedia] = useState(false);
   const [messageMenuOpen, setMessageMenuOpen] = useState(null); // ID del mensaje con menú abierto
   const [menuClosing, setMenuClosing] = useState(null); // ID del menú que se está cerrando
@@ -816,7 +820,15 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     }
   };
 
-  // Grabacion de audio (voice note) via MediaRecorder
+  // Grabacion de audio (voice note) via MediaRecorder + visualizacion con AnalyserNode
+  const NUM_BARS = 32;
+
+  const teardownAudioContext = () => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    if (analyserRef.current) { try { analyserRef.current.disconnect(); } catch {} analyserRef.current = null; }
+    if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+  };
+
   const startAudioRecording = async () => {
     if (!navigator.mediaDevices || !window.MediaRecorder) {
       setErrorMessage('Tu navegador no soporta grabacion de audio');
@@ -832,6 +844,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
       recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        teardownAudioContext();
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
         if (blob.size > 500) {
           const ext = (recorder.mimeType || 'audio/webm').includes('ogg') ? 'ogg' : 'webm';
@@ -850,12 +863,44 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
       mediaRecorderRef.current = recorder;
       recordingStartRef.current = Date.now();
       setRecordingDuration(0);
+      setRecordingLevels(new Array(NUM_BARS).fill(0));
       recordingTimerRef.current = setInterval(() => {
         setRecordingDuration(Math.floor((Date.now() - recordingStartRef.current) / 1000));
       }, 250);
+
+      // Setup AnalyserNode para la visualizacion de frecuencias
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+          audioContextRef.current = ctx;
+          analyserRef.current = analyser;
+          const buffer = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            if (!analyserRef.current) return;
+            analyser.getByteFrequencyData(buffer);
+            // Sample to NUM_BARS evenly
+            const step = buffer.length / NUM_BARS;
+            const next = new Array(NUM_BARS);
+            for (let i = 0; i < NUM_BARS; i++) {
+              const v = buffer[Math.floor(i * step)] || 0;
+              next[i] = Math.min(1, v / 255);
+            }
+            setRecordingLevels(next);
+            rafRef.current = requestAnimationFrame(tick);
+          };
+          rafRef.current = requestAnimationFrame(tick);
+        }
+      } catch (e) { /* analyser no critico */ }
+
       recorder.start();
       setIsRecording(true);
     } catch (err) {
+      teardownAudioContext();
       setErrorMessage(err.name === 'NotAllowedError' ? 'Permiso de microfono denegado' : `No se pudo iniciar grabacion: ${err.message}`);
       setShowErrorModal(true);
     }
@@ -865,10 +910,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
     setIsRecording(false);
     const recorder = mediaRecorderRef.current;
-    if (!recorder) return;
+    if (!recorder) { teardownAudioContext(); return; }
     if (cancel) {
       audioChunksRef.current = [];
-      try { recorder.ondataavailable = null; recorder.onstop = () => { recorder.stream?.getTracks().forEach((t) => t.stop()); }; } catch {}
+      try { recorder.ondataavailable = null; recorder.onstop = () => { recorder.stream?.getTracks().forEach((t) => t.stop()); teardownAudioContext(); }; } catch {}
     }
     try { recorder.stop(); } catch {}
   };
@@ -1993,19 +2038,23 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 ? '0 2px 8px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)'
                 : '0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
             }}>
-              {/* Iconos de adjuntar inline (mismo color) */}
+              {/* Iconos de adjuntar inline (mismo color).
+                  Durante grabacion solo se ve el boton del micro como X (cancelar). */}
               <div className="flex items-center gap-0.5 flex-shrink-0 mr-1">
-                {[
-                  { type: 'image',    icon: 'ti-photo',          label: 'Imagen' },
-                  { type: 'document', icon: 'ti-file-text',      label: 'Documento' },
-                  { type: 'audio',    icon: isRecording ? 'ti-player-stop-filled' : 'ti-microphone', label: isRecording ? 'Detener y enviar' : 'Grabar audio', recording: true },
-                  { type: 'sticker',  icon: 'ti-mood-smile',     label: 'Stickers' },
-                ].map((t) => (
+                {(isRecording
+                  ? [{ type: 'audio', icon: 'ti-x', label: 'Cancelar grabacion', recording: true }]
+                  : [
+                      { type: 'image',    icon: 'ti-photo',      label: 'Imagen' },
+                      { type: 'document', icon: 'ti-file-text',  label: 'Documento' },
+                      { type: 'audio',    icon: 'ti-microphone', label: 'Grabar audio', recording: true },
+                      { type: 'sticker',  icon: 'ti-mood-smile', label: 'Stickers' },
+                    ]
+                ).map((t) => (
                   <button
                     key={t.type}
                     onClick={() => {
                       if (t.recording) {
-                        if (isRecording) stopAudioRecording(false);
+                        if (isRecording) stopAudioRecording(true);
                         else startAudioRecording();
                       } else if (t.type === 'sticker') {
                         openStickerCollection();
@@ -2025,55 +2074,57 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       border: 'none',
                       color: (t.recording && isRecording) ? '#ef4444' : 'var(--accent)',
                       cursor: (sendingMedia && !isRecording) ? 'wait' : 'pointer',
-                      animation: (t.recording && isRecording) ? 'msgHighlight 1.4s ease-in-out infinite' : 'none',
                     }}
-                    onMouseEnter={(e) => { if (!(t.recording && isRecording)) e.currentTarget.style.background = 'var(--bg-active)'; }}
-                    onMouseLeave={(e) => { if (!(t.recording && isRecording)) e.currentTarget.style.background = 'transparent'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = (t.recording && isRecording) ? 'rgba(239,68,68,0.22)' : 'var(--bg-active)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = (t.recording && isRecording) ? 'rgba(239,68,68,0.15)' : 'transparent'; }}
                   >
                     <i className={`ti ${t.icon}`} style={{ fontSize: 16 }} />
                   </button>
                 ))}
-                {isRecording && (
-                  <>
-                    <span
-                      className="mono"
-                      style={{
-                        fontSize: 11,
-                        color: '#ef4444',
-                        fontWeight: 600,
-                        marginLeft: 4,
-                        minWidth: 32,
-                      }}
-                    >
-                      {String(Math.floor(recordingDuration / 60)).padStart(2,'0')}:{String(recordingDuration % 60).padStart(2,'0')}
-                    </span>
-                    <button
-                      onClick={() => stopAudioRecording(true)}
-                      title="Cancelar grabacion"
-                      aria-label="Cancelar grabacion"
-                      className="flex items-center justify-center flex-shrink-0"
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-tertiary)',
-                        cursor: 'pointer',
-                        marginLeft: 2,
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; }}
-                    >
-                      <i className="ti ti-x" style={{ fontSize: 14 }} />
-                    </button>
-                  </>
-                )}
               </div>
 
               <div className="flex-1 min-w-0 relative flex items-center">
+                {/* Visualizador de frecuencia mientras se graba (reemplaza el textarea) */}
+                {isRecording && (
+                  <div className="flex items-center gap-2 w-full py-2">
+                    <span style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: '#ef4444',
+                      flexShrink: 0,
+                      animation: 'fadeIn 1s ease-in-out infinite alternate',
+                    }} />
+                    <span className="mono" style={{
+                      fontSize: 11,
+                      color: '#ef4444',
+                      fontWeight: 600,
+                      flexShrink: 0,
+                      minWidth: 34,
+                    }}>
+                      {String(Math.floor(recordingDuration / 60)).padStart(2,'0')}:{String(recordingDuration % 60).padStart(2,'0')}
+                    </span>
+                    <div className="flex items-center gap-[2px] flex-1 min-w-0" style={{ height: 22 }}>
+                      {recordingLevels.map((lvl, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            flex: 1,
+                            minWidth: 2,
+                            height: `${Math.max(4, Math.round(lvl * 22))}px`,
+                            borderRadius: 2,
+                            background: 'var(--accent)',
+                            opacity: 0.55 + lvl * 0.45,
+                            transition: 'height 60ms linear, opacity 60ms linear',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Dropdown de menciones */}
-                {showMentions && filteredParticipants.length > 0 && (
+                {!isRecording && showMentions && filteredParticipants.length > 0 && (
                   <div className="absolute bottom-full left-0 right-0 mb-1 rounded-lg shadow-lg max-h-48 overflow-y-auto z-50" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
                     {filteredParticipants.map((p, i) => (
                       <button
@@ -2105,6 +2156,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                     ))}
                   </div>
                 )}
+                {!isRecording && (
                 <textarea
                   ref={textareaRef}
                   value={message}
@@ -2176,14 +2228,15 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                     }
                   }}
                 />
+                )}
               </div>
             </div>
 
-            {/* Botón enviar con gradient indigo */}
+            {/* Botón enviar con gradient indigo (durante grabacion para y envia el audio) */}
             <button
-              onClick={handleSend}
-              disabled={sending || sendingMedia}
-              aria-label="Enviar mensaje"
+              onClick={() => { if (isRecording) { stopAudioRecording(false); } else { handleSend(); } }}
+              disabled={(sending || sendingMedia) && !isRecording}
+              aria-label={isRecording ? 'Enviar audio grabado' : 'Enviar mensaje'}
               className="flex items-center justify-center transition-all flex-shrink-0"
               style={{
                 width: 38,
