@@ -1919,64 +1919,52 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
             </div>
           )}
 
-          {/* Menú de adjuntar - fuera de la píldora, posición fixed */}
-          {showAttachMenu && (
-            <div ref={attachMenuRef} className="fixed bottom-16 left-3 md:left-auto md:bottom-20 w-48 rounded-2xl shadow-lg z-50" style={{
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-primary)',
-              boxShadow: '0 10px 25px var(--shadow-md)'
-            }}>
-              <div className="py-1">
-                <button onClick={() => handleAttachClick('image')} className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all hover:bg-gray-50 dark:hover:bg-slate-700" style={{ color: 'var(--text-secondary)' }}>
-                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <span>Imagen</span>
-                </button>
-                <button onClick={() => handleAttachClick('video')} className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all hover:bg-gray-50 dark:hover:bg-slate-700" style={{ color: 'var(--text-secondary)' }}>
-                  <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                  <span>Video</span>
-                </button>
-                <button onClick={() => handleAttachClick('document')} className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all hover:bg-gray-50 dark:hover:bg-slate-700" style={{ color: 'var(--text-secondary)' }}>
-                  <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                  <span>Documento</span>
-                </button>
-                <button onClick={() => handleAttachClick('audio')} className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all hover:bg-gray-50 dark:hover:bg-slate-700" style={{ color: 'var(--text-secondary)' }}>
-                  <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                  <span>Audio</span>
-                </button>
-                <button onClick={() => { setShowAttachMenu(false); openStickerCollection(); }} className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all hover:bg-gray-50 dark:hover:bg-slate-700" style={{ color: 'var(--text-secondary)' }}>
-                  <svg className="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <span>Stickers</span>
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Toolbar de adjuntar SIEMPRE visible (afuera de la pildora) */}
+          <div className="px-2 md:px-4 pt-2 flex items-center gap-2 flex-shrink-0" style={{
+            background: isDarkMode ? '#0b141a' : '#edf7f6',
+          }}>
+            {[
+              { type: 'image',    icon: 'ti-photo',         label: 'Imagen',     color: '#3b82f6' },
+              { type: 'video',    icon: 'ti-video',         label: 'Video',      color: '#ef4444' },
+              { type: 'document', icon: 'ti-file-text',     label: 'Documento',  color: '#f59e0b' },
+              { type: 'audio',    icon: 'ti-microphone',    label: 'Audio',      color: '#a855f7' },
+              { type: 'sticker',  icon: 'ti-mood-smile',    label: 'Stickers',   color: '#14b8a6' },
+            ].map((t) => (
+              <button
+                key={t.type}
+                onClick={() => t.type === 'sticker' ? openStickerCollection() : handleAttachClick(t.type)}
+                disabled={sendingMedia}
+                title={t.label}
+                aria-label={t.label}
+                className="flex items-center justify-center transition-all disabled:opacity-50 flex-shrink-0"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  color: t.color,
+                  cursor: sendingMedia ? 'wait' : 'pointer',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--border-active)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+              >
+                <i className={`ti ${t.icon}`} style={{ fontSize: 16 }} />
+              </button>
+            ))}
+          </div>
 
           <div className="px-2 md:px-4 py-2 md:py-3 flex items-end gap-2 relative flex-shrink-0" style={{
             background: isDarkMode ? '#0b141a' : '#edf7f6',
           }}>
             {/* Píldora del input */}
-            <div className="flex items-center flex-1 min-w-0 rounded-full pl-3 pr-2" style={{
+            <div className="flex items-center flex-1 min-w-0 rounded-full pl-4 pr-2" style={{
               background: isDarkMode ? '#1e2a35' : '#ffffff',
               minHeight: '42px',
               boxShadow: isDarkMode
                 ? '0 2px 8px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)'
                 : '0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
             }}>
-              {/* Botón de adjuntar */}
-              <button
-                ref={attachBtnRef}
-                onClick={() => setShowAttachMenu(!showAttachMenu)}
-                disabled={sendingMedia}
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-50 flex-shrink-0 mr-1"
-                style={{
-                  color: showAttachMenu ? 'var(--brand-primary)' : 'var(--text-tertiary)',
-                }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transform: 'rotate(45deg)' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                </svg>
-              </button>
-
               <div className="flex-1 min-w-0 relative flex items-center">
                 {/* Dropdown de menciones */}
                 {showMentions && filteredParticipants.length > 0 && (
