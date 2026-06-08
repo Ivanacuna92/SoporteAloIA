@@ -83,6 +83,31 @@ class DatabaseInit {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             `);
 
+            // Migración idempotente: columna is_archived en client_assignments
+            try {
+                await database.query(`
+                    ALTER TABLE client_assignments
+                    ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE
+                `);
+                console.log('✅ Columna client_assignments.is_archived agregada');
+            } catch (err) {
+                const msg = String(err.message || '').toLowerCase();
+                if (!msg.includes('duplicate') && !msg.includes('exists')) {
+                    throw err;
+                }
+            }
+            try {
+                await database.query(`
+                    ALTER TABLE client_assignments
+                    ADD INDEX idx_is_archived (is_archived)
+                `);
+            } catch (err) {
+                const msg = String(err.message || '').toLowerCase();
+                if (!msg.includes('duplicate') && !msg.includes('exists')) {
+                    throw err;
+                }
+            }
+
             // Insertar usuario admin por defecto si no existe
             const adminExists = await database.findOne('support_users', 'email = ?', ['admin@whatspanel.com']);
             if (!adminExists) {

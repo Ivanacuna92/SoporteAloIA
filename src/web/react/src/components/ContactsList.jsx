@@ -5,6 +5,7 @@ import notificationSound from '../assets/notification.mp3';
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'unread' | 'archived'
   const [lastReadMessages, setLastReadMessages] = useState(() => {
     // Cargar del localStorage al iniciar
     const saved = localStorage.getItem('lastReadMessages');
@@ -176,9 +177,29 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     return unreadCount > 0 ? unreadCount : 0;
   };
 
+  const markAllAsRead = () => {
+    const updated = { ...lastReadMessages };
+    contacts.forEach(c => {
+      updated[c.phone] = c.messages.length;
+    });
+    setLastReadMessages(updated);
+  };
+
+  const archivedCount = contacts.filter(c => c.isArchived).length;
+  const unreadCount = contacts.filter(c => !c.isArchived && getUnreadCount(c) > 0).length;
+
   const filteredContacts = contacts
     .filter(contact => {
+      // Filtro por tab
+      if (activeTab === 'archived') {
+        if (!contact.isArchived) return false;
+      } else {
+        if (contact.isArchived) return false;
+        if (activeTab === 'unread' && getUnreadCount(contact) === 0) return false;
+      }
+
       const searchLower = searchTerm.toLowerCase();
+      if (!searchLower) return true;
 
       // Buscar en el número de teléfono o nombre de grupo
       const contactName = contact.isGroup ? (contact.groupName || contact.phone) : contact.phone;
@@ -254,12 +275,91 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             }}
           />
         </div>
+
+        {/* Tabs de filtro: Todos / No leídos / Archivados + Marcar todos como leídos */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <button
+            onClick={() => setActiveTab('all')}
+            className="text-xs px-3 py-1.5 rounded-full font-medium transition-all"
+            style={{
+              background: activeTab === 'all' ? '#FD6144' : '#F3F4F6',
+              color: activeTab === 'all' ? '#ffffff' : '#6B7280'
+            }}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setActiveTab('unread')}
+            className="text-xs px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: activeTab === 'unread' ? '#FD6144' : '#F3F4F6',
+              color: activeTab === 'unread' ? '#ffffff' : '#6B7280'
+            }}
+          >
+            No leídos
+            {unreadCount > 0 && (
+              <span className="px-1.5 rounded-full text-[10px] font-bold" style={{
+                background: activeTab === 'unread' ? 'rgba(255,255,255,0.25)' : '#FD6144',
+                color: '#ffffff'
+              }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('archived')}
+            className="text-xs px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: activeTab === 'archived' ? '#FD6144' : '#F3F4F6',
+              color: activeTab === 'archived' ? '#ffffff' : '#6B7280'
+            }}
+            title="Conversaciones archivadas"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            Archivados
+            {archivedCount > 0 && (
+              <span className="px-1.5 rounded-full text-[10px] font-bold" style={{
+                background: activeTab === 'archived' ? 'rgba(255,255,255,0.25)' : '#9CA3AF',
+                color: '#ffffff'
+              }}>
+                {archivedCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={markAllAsRead}
+            disabled={unreadCount === 0}
+            className="ml-auto text-xs px-3 py-1.5 rounded-full font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'transparent',
+              color: '#6B7280',
+              border: '1px solid #E5E7EB'
+            }}
+            onMouseEnter={(e) => {
+              if (unreadCount > 0) e.currentTarget.style.background = '#F3F4F6';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+            title="Marcar todos los chats como leídos"
+          >
+            Marcar leídos
+          </button>
+        </div>
       </div>
 
       {/* Lista de contactos */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 md:px-3">
         {filteredContacts.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">No hay contactos</div>
+          <div className="text-center py-12 text-gray-400 text-sm">
+            {activeTab === 'archived'
+              ? 'No hay conversaciones archivadas'
+              : activeTab === 'unread'
+              ? 'No tienes mensajes sin leer'
+              : 'No hay contactos'}
+          </div>
         ) : (
           filteredContacts.map(contact => (
             <div
