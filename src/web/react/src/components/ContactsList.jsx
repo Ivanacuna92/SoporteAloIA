@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { getMyContacts } from '../services/api';
+import { getMyContacts, getMuteStates } from '../services/api';
 import notificationSound from '../assets/notification.mp3';
 import alexisSound from '../assets/alexis.mp3';
 
@@ -16,6 +16,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
   const audioRef = useRef(null);
   const alexisAudioRef = useRef(null);
   const previousTotalMessages = useRef(0);
+  const [muteStates, setMuteStates] = useState({});
+  const muteStatesRef = useRef({});
   const selectedContactRef = useRef(selectedContact);
   const loadingRef = useRef(false);
   const loadContactsRef = useRef(null);
@@ -57,7 +59,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             return newContact.messages.length > oldTotalMessages;
           });
 
-          if (contactWithNewMessages) {
+          if (contactWithNewMessages && !muteStatesRef.current[contactWithNewMessages.phone]) {
             const lastMessage = contactWithNewMessages.messages[contactWithNewMessages.messages.length - 1];
             const contactName = contactWithNewMessages.isGroup
               ? (contactWithNewMessages.groupName || contactWithNewMessages.phone)
@@ -143,6 +145,18 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       Notification.requestPermission();
     }
 
+    const refreshMuteStates = async () => {
+      try {
+        const m = await getMuteStates();
+        muteStatesRef.current = m || {};
+        setMuteStates(m || {});
+      } catch (e) { /* ignore */ }
+    };
+    refreshMuteStates();
+    const muteInterval = setInterval(refreshMuteStates, 15000);
+    const onMuteChange = () => refreshMuteStates();
+    window.addEventListener('mute-changed', onMuteChange);
+
     const poll = () => loadContactsRef.current?.();
 
     poll();
@@ -175,11 +189,13 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
     return () => {
       clearInterval(interval);
+      clearInterval(muteInterval);
       if (socket) socket.disconnect();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('pageshow', onFocus);
       window.removeEventListener('touchstart', onTouch);
+      window.removeEventListener('mute-changed', onMuteChange);
     };
   }, []);
 
@@ -465,6 +481,11 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                             }}>
                               Soporte
                             </span>
+                          )}
+                          {muteStates[contact.phone] && (
+                            <svg title="Silenciado" className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341M15 17H9m6 0a3 3 0 01-6 0m0 0H4l1.405-1.405M3 3l18 18" />
+                            </svg>
                           )}
                         </>
                       )}

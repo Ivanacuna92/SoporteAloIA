@@ -7,6 +7,7 @@ const multer = require('multer');
 const { Server: SocketServer } = require('socket.io');
 const logger = require('../services/logger');
 const humanModeManager = require('../services/humanModeManager');
+const muteManager = require('../services/muteManager');
 const salesManager = require('../services/salesManager');
 const conversationAnalyzer = require('../services/conversationAnalyzer');
 const authService = require('../services/authService');
@@ -648,6 +649,28 @@ self.addEventListener('fetch', function() {});
                 }
             } catch (error) {
                 console.error('Error actualizando estado humano:', error);
+                res.status(500).json({ error: 'Error interno del servidor' });
+            }
+        });
+
+        // API endpoints para gestión de silenciamiento (mute) por conversación
+        this.app.get('/api/mute-states', (req, res) => {
+            try {
+                res.json(muteManager.getAll());
+            } catch (error) {
+                console.error('Error obteniendo mute states:', error);
+                res.status(500).json({ error: 'Error obteniendo mute states' });
+            }
+        });
+
+        this.app.post('/api/mute-states', (req, res) => {
+            try {
+                const { phone, muted } = req.body;
+                if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+                muteManager.setMute(phone, !!muted);
+                res.json({ success: true, phone, muted: !!muted });
+            } catch (error) {
+                console.error('Error actualizando mute state:', error);
                 res.status(500).json({ error: 'Error interno del servidor' });
             }
         });

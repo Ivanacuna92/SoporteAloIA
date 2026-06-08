@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -335,6 +335,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [supportHandledContacts, setSupportHandledContacts] = useState(new Set());
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [togglingMute, setTogglingMute] = useState(false);
+  const [contactInfoModal, setContactInfoModal] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showLeaveGroupModal, setShowLeaveGroupModal] = useState(false);
   const [deletingConversation, setDeletingConversation] = useState(false);
@@ -491,6 +494,66 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
       setGroupParticipants([]);
     }
   }, [contact?.phone, contact?.isGroup]);
+
+  // Cargar estado de silenciamiento del contacto actual
+  useEffect(() => {
+    if (!contact?.phone) { setIsMuted(false); return; }
+    getMuteStates()
+      .then(states => setIsMuted(!!states[contact.phone]))
+      .catch(() => setIsMuted(false));
+  }, [contact?.phone]);
+
+  const handleToggleMute = async () => {
+    if (!contact?.phone || togglingMute) return;
+    const next = !isMuted;
+    setTogglingMute(true);
+    setIsMuted(next);
+    try {
+      await toggleMute(contact.phone, next);
+      window.dispatchEvent(new Event('mute-changed'));
+    } catch (e) {
+      setIsMuted(!next);
+    } finally {
+      setTogglingMute(false);
+    }
+  };
+
+  const cleanJidToPhone = (jid) => {
+    if (!jid) return null;
+    if (jid.endsWith('@s.whatsapp.net')) return jid.replace('@s.whatsapp.net', '');
+    if (jid.endsWith('@g.us')) return jid.replace('@g.us', '');
+    if (jid.endsWith('@lid')) return null; // LID interno, no es teléfono
+    return jid;
+  };
+
+  const openMemberInfo = (msg) => {
+    if (!msg) return;
+    const participant = msg.participant || null;
+    // 1) Si el propio mensaje ya trae el teléfono real (participantPn), usarlo
+    let phone = cleanJidToPhone(msg.participantPn) || cleanJidToPhone(participant);
+    // 2) Resolver lid→teléfono vía groupParticipants (p.phone viene de groupMetadata.jid)
+    if (!phone && participant && groupParticipants?.length) {
+      const match = groupParticipants.find(p => p.id === participant || p.lid === participant);
+      if (match) phone = match.phone || cleanJidToPhone(match.id);
+    }
+    setContactInfoModal({
+      name: msg.userName || 'Usuario',
+      phone: phone || null,
+      rawId: participant || null,
+      isGroupMember: true
+    });
+  };
+
+  const openContactInfo = () => {
+    if (!contact) return;
+    setContactInfoModal({
+      name: contact.isGroup ? (contact.groupName || contact.phone) : contact.phone,
+      phone: contact.isGroup ? null : contact.phone,
+      rawId: contact.phone,
+      isGroupMember: false,
+      isGroup: contact.isGroup
+    });
+  };
 
   // Cerrar menú al hacer click fuera
   useEffect(() => {
@@ -979,9 +1042,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               ></div>
             )}
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={openContactInfo} title="Ver información del contacto">
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 truncate hover:underline">
                 {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
               </h3>
             </div>
@@ -993,6 +1056,36 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
 
         {/* Botones de acción */}
         <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+          {/* Botón de silenciar/desilenciar */}
+          <button
+            onClick={handleToggleMute}
+            disabled={togglingMute}
+            title={isMuted ? 'Quitar silencio' : 'Silenciar notificaciones'}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
+            style={{
+              background: isMuted ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+              color: isMuted ? '#EF4444' : 'var(--text-secondary)',
+              opacity: togglingMute ? 0.6 : 1,
+              cursor: togglingMute ? 'wait' : 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              if (!isMuted) e.currentTarget.style.background = 'rgba(107, 114, 128, 0.1)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isMuted) e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            {isMuted ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341M15 17H9m6 0a3 3 0 01-6 0m0 0H4l1.405-1.405M3 3l18 18" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341M15 17H9m6 0a3 3 0 01-6 0m0 0H4l1.405-1.405A2.032 2.032 0 006 14.158V11a6.002 6.002 0 014-5.659V5" />
+              </svg>
+            )}
+          </button>
+
           {/* Botón de menú de opciones (3 puntos) */}
           <div className="relative" ref={optionsMenuRef}>
             <button
@@ -1273,18 +1366,23 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
 
                 {/* Mostrar nombre del usuario solo si es un grupo */}
                 {contact.isGroup && isClient && (
-                  <div key={`name-${index}-${isDarkMode}`} className="text-xs font-semibold mb-1" style={
-                    isVipParticipant(msg.participant, msg.userName) ? {
-                      background: isDarkMode
-                        ? 'linear-gradient(90deg, #FF6B81, #FF8C5A, #C08AFF)'
-                        : 'linear-gradient(90deg, #DC143C, #FF4500, #8B00FF)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text',
-                    } : {
-                      color: getParticipantColor(msg.userName || 'Usuario', isDarkMode)
-                    }
-                  }>
+                  <div
+                    key={`name-${index}-${isDarkMode}`}
+                    onClick={(e) => { e.stopPropagation(); openMemberInfo(msg); }}
+                    title="Ver información del miembro"
+                    className="text-xs font-semibold mb-1 cursor-pointer hover:underline"
+                    style={
+                      isVipParticipant(msg.participant, msg.userName) ? {
+                        background: isDarkMode
+                          ? 'linear-gradient(90deg, #FF6B81, #FF8C5A, #C08AFF)'
+                          : 'linear-gradient(90deg, #DC143C, #FF4500, #8B00FF)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                      } : {
+                        color: getParticipantColor(msg.userName || 'Usuario', isDarkMode)
+                      }
+                    }>
                     {msg.userName || 'Usuario'}
                   </div>
                 )}
@@ -2009,6 +2107,65 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 {endingConversation ? 'Finalizando...' : 'Finalizar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal info de contacto / miembro */}
+      {contactInfoModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm" onClick={() => setContactInfoModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()} style={{ boxShadow: '0 20px 50px var(--shadow-lg)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {contactInfoModal.isGroupMember ? 'Miembro del grupo' : (contactInfoModal.isGroup ? 'Información del grupo' : 'Información del contacto')}
+              </h3>
+              <button onClick={() => setContactInfoModal(null)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ color: 'var(--text-secondary)' }}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Nombre</div>
+                <div className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>{contactInfoModal.name || 'Sin nombre'}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Número</div>
+                {contactInfoModal.phone ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-mono" style={{ color: 'var(--text-primary)' }}>{contactInfoModal.phone}</span>
+                    <button
+                      onClick={() => { navigator.clipboard?.writeText(contactInfoModal.phone); }}
+                      title="Copiar"
+                      className="p-1.5 rounded-lg transition-all"
+                      style={{ color: 'var(--text-secondary)', background: 'var(--bg-tertiary)' }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-sm italic" style={{ color: 'var(--text-tertiary)' }}>
+                    No disponible {contactInfoModal.rawId?.endsWith('@lid') ? '(identificador interno de WhatsApp)' : ''}
+                  </div>
+                )}
+              </div>
+              {contactInfoModal.rawId && contactInfoModal.rawId !== contactInfoModal.phone && (
+                <div>
+                  <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>ID interno</div>
+                  <div className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{contactInfoModal.rawId}</div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setContactInfoModal(null)}
+              className="mt-6 w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}

@@ -93,6 +93,25 @@ export async function fetchContacts() {
   }
 }
 
+export async function getMuteStates() {
+  try {
+    const response = await fetchWithCredentials(`${API_BASE}/mute-states`);
+    if (!response.ok) return {};
+    return response.json();
+  } catch (e) {
+    return {};
+  }
+}
+
+export async function toggleMute(phone, muted) {
+  const response = await fetchWithCredentials(`${API_BASE}/mute-states`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, muted })
+  });
+  if (!response.ok) throw new Error('Error actualizando mute');
+  return response.json();
+}
+
 export async function toggleHumanMode(phone, isHumanMode, mode = null) {
   const body = mode ? { phone, mode } : { phone, isHumanMode };
   

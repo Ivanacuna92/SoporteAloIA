@@ -955,15 +955,18 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 .map(p => ({
                     id: p.id,
                     lid: p.lid || null,
+                    phone: p.jid ? p.jid.replace('@s.whatsapp.net', '') : (p.id.endsWith('@s.whatsapp.net') ? p.id.replace('@s.whatsapp.net', '') : null),
                     name: p.notify || null,
                     admin: p.admin || null
                 }));
 
-            // Cachear participantes en BD
+            // Cachear participantes en BD (usa p.jid si existe para mapear LID→teléfono real)
             try {
                 for (const p of groupMetadata.participants) {
-                    const pJid = p.lid || p.id;
-                    const phoneJid = p.id.endsWith('@s.whatsapp.net') ? p.id : null;
+                    const pJid = p.id; // clave primaria en cache
+                    const phoneJid = (p.jid && p.jid.endsWith('@s.whatsapp.net'))
+                        ? p.jid
+                        : (p.id.endsWith('@s.whatsapp.net') ? p.id : null);
                     await database.query(
                         `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
                          VALUES (?, ?, ?, ?, ?)
@@ -972,13 +975,14 @@ module.exports = function(app, requireAuth, requireAdmin) {
                                                   admin_role = VALUES(admin_role)`,
                         [groupJid, pJid, phoneJid, p.notify || p.verifiedName || null, p.admin || null]
                     );
-                    if (p.lid && p.id.endsWith('@s.whatsapp.net')) {
+                    // Si el LID difiere del id principal, también guardar mapeo por LID
+                    if (p.lid && p.lid !== p.id) {
                         await database.query(
                             `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
                              VALUES (?, ?, ?, ?, ?)
                              ON DUPLICATE KEY UPDATE phone_jid = COALESCE(VALUES(phone_jid), phone_jid),
                                                       display_name = COALESCE(VALUES(display_name), display_name)`,
-                            [groupJid, p.lid, p.id, p.notify || p.verifiedName || null, p.admin || null]
+                            [groupJid, p.lid, phoneJid, p.notify || p.verifiedName || null, p.admin || null]
                         );
                     }
                 }
@@ -1013,7 +1017,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     if (!p.name && cachedMap[p.id]?.display_name) {
                         p.name = cachedMap[p.id].display_name;
                     }
-                    if (p.id.endsWith('@lid') && cachedMap[p.id]?.phone_jid) {
+                    // Sólo usar el teléfono cacheado si es un JID real (@s.whatsapp.net), nunca un @lid
+                    if (!p.phone && cachedMap[p.id]?.phone_jid && cachedMap[p.id].phone_jid.endsWith('@s.whatsapp.net')) {
                         p.phone = cachedMap[p.id].phone_jid.replace('@s.whatsapp.net', '');
                     }
                 }

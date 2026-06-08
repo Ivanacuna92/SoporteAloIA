@@ -796,11 +796,13 @@ class WhatsAppInstanceManager {
                 const groupMetadata = await instanceData.sock.groupMetadata(from);
                 groupName = groupMetadata.subject || groupId;
 
-                // Cachear participantes del grupo
+                // Cachear participantes del grupo (usa p.jid si existe para mapear LID→teléfono real)
                 try {
                     for (const p of groupMetadata.participants) {
-                        const pJid = p.lid || p.id;
-                        const phoneJid = p.id.endsWith('@s.whatsapp.net') ? p.id : (p.lid ? p.id : null);
+                        const pJid = p.id;
+                        const phoneJid = (p.jid && p.jid.endsWith('@s.whatsapp.net'))
+                            ? p.jid
+                            : (p.id.endsWith('@s.whatsapp.net') ? p.id : null);
                         await database.query(
                             `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
                              VALUES (?, ?, ?, ?, ?)
@@ -809,14 +811,13 @@ class WhatsAppInstanceManager {
                                                       admin_role = VALUES(admin_role)`,
                             [from, pJid, phoneJid, p.notify || p.verifiedName || null, p.admin || null]
                         );
-                        // También guardar mapeo inverso si tiene LID y phone
-                        if (p.lid && p.id.endsWith('@s.whatsapp.net')) {
+                        if (p.lid && p.lid !== p.id) {
                             await database.query(
                                 `INSERT INTO group_participants (group_jid, participant_jid, phone_jid, display_name, admin_role)
                                  VALUES (?, ?, ?, ?, ?)
                                  ON DUPLICATE KEY UPDATE phone_jid = COALESCE(VALUES(phone_jid), phone_jid),
                                                           display_name = COALESCE(VALUES(display_name), display_name)`,
-                                [from, p.lid, p.id, p.notify || p.verifiedName || null, p.admin || null]
+                                [from, p.lid, phoneJid, p.notify || p.verifiedName || null, p.admin || null]
                             );
                         }
                     }
