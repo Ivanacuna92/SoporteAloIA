@@ -1919,52 +1919,50 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
             </div>
           )}
 
-          {/* Toolbar de adjuntar SIEMPRE visible (afuera de la pildora) */}
-          <div className="px-2 md:px-4 pt-2 flex items-center gap-2 flex-shrink-0" style={{
-            background: isDarkMode ? '#0b141a' : '#edf7f6',
-          }}>
-            {[
-              { type: 'image',    icon: 'ti-photo',         label: 'Imagen',     color: '#3b82f6' },
-              { type: 'video',    icon: 'ti-video',         label: 'Video',      color: '#ef4444' },
-              { type: 'document', icon: 'ti-file-text',     label: 'Documento',  color: '#f59e0b' },
-              { type: 'audio',    icon: 'ti-microphone',    label: 'Audio',      color: '#a855f7' },
-              { type: 'sticker',  icon: 'ti-mood-smile',    label: 'Stickers',   color: '#14b8a6' },
-            ].map((t) => (
-              <button
-                key={t.type}
-                onClick={() => t.type === 'sticker' ? openStickerCollection() : handleAttachClick(t.type)}
-                disabled={sendingMedia}
-                title={t.label}
-                aria-label={t.label}
-                className="flex items-center justify-center transition-all disabled:opacity-50 flex-shrink-0"
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  background: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: t.color,
-                  cursor: sendingMedia ? 'wait' : 'pointer',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--border-active)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; }}
-              >
-                <i className={`ti ${t.icon}`} style={{ fontSize: 16 }} />
-              </button>
-            ))}
-          </div>
-
           <div className="px-2 md:px-4 py-2 md:py-3 flex items-end gap-2 relative flex-shrink-0" style={{
             background: isDarkMode ? '#0b141a' : '#edf7f6',
           }}>
             {/* Píldora del input */}
-            <div className="flex items-center flex-1 min-w-0 rounded-full pl-4 pr-2" style={{
+            <div className="flex items-center flex-1 min-w-0 rounded-full pl-2 pr-2" style={{
               background: isDarkMode ? '#1e2a35' : '#ffffff',
               minHeight: '42px',
               boxShadow: isDarkMode
                 ? '0 2px 8px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)'
                 : '0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
             }}>
+              {/* Iconos de adjuntar inline (mismo color) */}
+              <div className="flex items-center gap-0.5 flex-shrink-0 mr-1">
+                {[
+                  { type: 'image',    icon: 'ti-photo',      label: 'Imagen' },
+                  { type: 'video',    icon: 'ti-video',      label: 'Video' },
+                  { type: 'document', icon: 'ti-file-text',  label: 'Documento' },
+                  { type: 'audio',    icon: 'ti-microphone', label: 'Audio' },
+                  { type: 'sticker',  icon: 'ti-mood-smile', label: 'Stickers' },
+                ].map((t) => (
+                  <button
+                    key={t.type}
+                    onClick={() => t.type === 'sticker' ? openStickerCollection() : handleAttachClick(t.type)}
+                    disabled={sendingMedia}
+                    title={t.label}
+                    aria-label={t.label}
+                    className="flex items-center justify-center transition-all disabled:opacity-50 flex-shrink-0"
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: '50%',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-tertiary)',
+                      cursor: sendingMedia ? 'wait' : 'pointer',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+                  >
+                    <i className={`ti ${t.icon}`} style={{ fontSize: 16 }} />
+                  </button>
+                ))}
+              </div>
+
               <div className="flex-1 min-w-0 relative flex items-center">
                 {/* Dropdown de menciones */}
                 {showMentions && filteredParticipants.length > 0 && (
