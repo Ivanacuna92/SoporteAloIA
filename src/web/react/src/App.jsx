@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ContactsList from './components/ContactsList';
 import ChatPanel from './components/ChatPanel';
 import AppSidebar from './components/AppSidebar';
+import StatsPanel from './components/StatsPanel';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
 import QRDisplay from './components/QRDisplay';
@@ -16,8 +17,16 @@ function App() {
   const [selectedContact, setSelectedContact] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [currentView, setCurrentView] = useState(() => {
-    return localStorage.getItem('currentView') || 'contacts';
+    const saved = localStorage.getItem('currentView');
+    // Filtrar valores legacy ('reports', 'tickets', 'session') que ya no existen
+    const valid = ['contacts', 'inbox', 'archived', 'stats'];
+    return valid.includes(saved) ? saved : 'contacts';
   });
+  // Filtro de ContactsList controlado desde el sidebar
+  const viewToFilter = { contacts: 'all', inbox: 'unread', archived: 'archived' };
+  const filterToView = { all: 'contacts', unread: 'inbox', archived: 'archived' };
+  const activeFilter = viewToFilter[currentView] || 'all';
+  const setActiveFilter = (f) => setCurrentView(filterToView[f] || 'contacts');
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const deferredPromptRef = useRef(null);
 
@@ -235,12 +244,19 @@ function App() {
             onLogout={handleLogout}
           />
           <div className={`${selectedContact ? 'hidden md:flex' : 'flex'} flex-shrink-0 w-full md:w-[300px] max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
-            <ContactsList
-              contacts={contacts}
-              setContacts={setContacts}
-              selectedContact={selectedContact}
-              onSelectContact={setSelectedContact}
-            />
+            {currentView === 'stats' ? (
+              <StatsPanel contacts={contacts} />
+            ) : (
+              <ContactsList
+                contacts={contacts}
+                setContacts={setContacts}
+                selectedContact={selectedContact}
+                onSelectContact={setSelectedContact}
+                activeFilter={activeFilter}
+                setActiveFilter={setActiveFilter}
+                hideFilterPills={true}
+              />
+            )}
           </div>
           <div className={`${selectedContact ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
             <ChatPanel

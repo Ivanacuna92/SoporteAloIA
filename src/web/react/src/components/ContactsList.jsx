@@ -4,11 +4,14 @@ import { getMyContacts, getMuteStates } from '../services/api';
 import notificationSound from '../assets/notification.mp3';
 import alexisSound from '../assets/alexis.mp3';
 
-function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
+function ContactsList({ contacts, setContacts, selectedContact, onSelectContact, activeFilter: externalFilter, setActiveFilter: externalSetFilter, hideFilterPills = false }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [localContacts, setLocalContacts] = useState(contacts);
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread' | 'archived'
+  const [internalFilter, setInternalFilter] = useState('all'); // 'all' | 'unread' | 'archived'
+  // Modo controlado: si el padre pasa activeFilter, lo usamos; si no, estado interno
+  const activeFilter = externalFilter !== undefined ? externalFilter : internalFilter;
+  const setActiveFilter = externalSetFilter || setInternalFilter;
   const [lastReadMessages, setLastReadMessages] = useState(() => {
     const saved = localStorage.getItem('lastReadMessages');
     return saved ? JSON.parse(saved) : {};
@@ -332,7 +335,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
         </div>
       </div>
 
-      {/* Filter pills */}
+      {/* Filter pills (ocultos si el sidebar ya controla el filtro) */}
+      {!hideFilterPills && (
       <div className="flex gap-[6px]" style={{ padding: '0 16px 14px', flexWrap: 'wrap' }}>
         {[
           { id: 'all',      label: 'Todos',      count: null },
@@ -400,6 +404,31 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
           </button>
         )}
       </div>
+      )}
+
+      {/* Botón compacto "Marcar leídos" cuando los pills están ocultos pero hay no-leídos */}
+      {hideFilterPills && activeFilter === 'unread' && totalUnread > 0 && (
+        <div style={{ padding: '0 16px 12px' }}>
+          <button
+            onClick={markAllAsRead}
+            className="w-full transition-all flex items-center justify-center gap-2"
+            style={{
+              padding: '8px 12px',
+              borderRadius: 12,
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--accent)',
+              background: 'var(--bg-active)',
+              border: '1px solid var(--border-active)',
+              cursor: 'pointer',
+              fontFamily: 'Sora, sans-serif',
+            }}
+          >
+            <i className="ti ti-checks" style={{ fontSize: 14 }} />
+            Marcar todos como leídos
+          </button>
+        </div>
+      )}
 
       {/* Lista de contactos */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '6px 10px' }}>
