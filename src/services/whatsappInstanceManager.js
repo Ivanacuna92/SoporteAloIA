@@ -10,6 +10,7 @@ const promptLoader = require('./promptLoader');
 const humanModeManager = require('./humanModeManager');
 const followUpService = require('./followUpService');
 const systemConfigService = require('./systemConfigService');
+const pushService = require('./pushService');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -897,6 +898,21 @@ class WhatsAppInstanceManager {
 
             // Asignar grupo a este usuario de soporte si no está asignado
             await this.assignClientToUser(groupId, supportUserId, true, groupName, groupPicture);
+
+            // Web Push: notificar al operador cuando no tiene la app en foreground
+            try {
+                const mediaEmojiPush = hasMedia ? '📎 ' : '';
+                const bodyPreview = messageText
+                    ? (messageText.length > 80 ? messageText.substring(0, 80) + '…' : messageText)
+                    : (hasMedia ? `${mediaEmojiPush}${mediaInfo?.media_type || 'archivo'}` : 'Nuevo mensaje');
+                pushService.sendToUser(supportUserId, {
+                    title: `💬 ${groupName || groupId}`,
+                    body: `${userName}: ${bodyPreview}`,
+                    phone: groupId,
+                    icon: '/aloia-icon.png',
+                    tag: groupId
+                }).catch(() => {});
+            } catch (e) { /* no bloquear el flujo por push */ }
 
             // YA NO HAY IA - Solo registrar el mensaje entrante
             // Los humanos responderán manualmente desde el panel

@@ -897,6 +897,33 @@ export async function archiveContact(phone, archived) {
   return response.json();
 }
 
+// ===== WEB PUSH =====
+
+export async function getVapidPublicKey() {
+  const response = await fetchWithCredentials(`${API_BASE}/push/vapid-public-key`);
+  if (!response.ok) throw new Error('No hay clave VAPID');
+  const data = await response.json();
+  return data.publicKey;
+}
+
+export async function subscribeToPush(subscription) {
+  const response = await fetchWithCredentials(`${API_BASE}/push/subscribe`, {
+    method: 'POST',
+    body: JSON.stringify({ subscription })
+  });
+  if (!response.ok) throw new Error('Error suscribiendo push');
+  return response.json();
+}
+
+export async function unsubscribeFromPush(endpoint) {
+  const response = await fetchWithCredentials(`${API_BASE}/push/unsubscribe`, {
+    method: 'POST',
+    body: JSON.stringify({ endpoint })
+  });
+  if (!response.ok) throw new Error('Error desuscribiendo push');
+  return response.json();
+}
+
 // Enviar mensaje con opciones avanzadas (menciones, responder)
 export async function sendMessageAdvanced(phone, message, options = {}) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message-advanced`, {

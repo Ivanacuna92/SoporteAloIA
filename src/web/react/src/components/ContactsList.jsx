@@ -1,8 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { getMyContacts, getMuteStates } from '../services/api';
+import { getMyContacts, getMuteStates, getVapidPublicKey, subscribeToPush } from '../services/api';
 import notificationSound from '../assets/notichida.mp3';
 import alexisSound from '../assets/alexis.mp3';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
+  return output;
+}
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact, activeFilter: externalFilter, setActiveFilter: externalSetFilter, hideFilterPills = false }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -142,10 +151,34 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
   // Guardar referencia estable a loadContacts
   loadContactsRef.current = loadContacts;
 
+  const registerPushSubscription = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        const publicKey = await getVapidPublicKey();
+        if (!publicKey) return;
+        const key = urlBase64ToUint8Array(publicKey);
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key
+        });
+      }
+      await subscribeToPush(sub.toJSON());
+    } catch (e) {
+      /* push no disponible o rechazado */
+    }
+  };
+
   // Polling + Socket + Visibility handlers
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      Notification.requestPermission().then((perm) => {
+        if (perm === 'granted') registerPushSubscription();
+      });
+    } else if ('Notification' in window && Notification.permission === 'granted') {
+      registerPushSubscription();
     }
 
     const refreshMuteStates = async () => {

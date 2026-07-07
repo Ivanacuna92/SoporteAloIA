@@ -3,6 +3,7 @@
 
 const authService = require('../services/authService');
 const database = require('../services/database');
+const pushService = require('../services/pushService');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -1244,6 +1245,40 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 error: 'Error archivando contacto',
                 details: error.message
             });
+        }
+    });
+
+    // ===== WEB PUSH NOTIFICATIONS =====
+
+    app.get('/api/push/vapid-public-key', requireAuth, (req, res) => {
+        const key = pushService.getPublicKey();
+        if (!key) return res.status(503).json({ error: 'Push no configurado' });
+        res.json({ publicKey: key });
+    });
+
+    app.post('/api/push/subscribe', requireAuth, async (req, res) => {
+        try {
+            const subscription = req.body?.subscription;
+            if (!subscription?.endpoint) {
+                return res.status(400).json({ error: 'Suscripción inválida' });
+            }
+            await pushService.saveSubscription(req.user.id, subscription);
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error guardando suscripción push:', error);
+            res.status(500).json({ error: 'Error guardando suscripción' });
+        }
+    });
+
+    app.post('/api/push/unsubscribe', requireAuth, async (req, res) => {
+        try {
+            const endpoint = req.body?.endpoint;
+            if (!endpoint) return res.status(400).json({ error: 'endpoint requerido' });
+            await pushService.removeSubscription(endpoint);
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error eliminando suscripción push:', error);
+            res.status(500).json({ error: 'Error eliminando suscripción' });
         }
     });
 };

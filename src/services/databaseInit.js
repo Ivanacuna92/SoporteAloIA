@@ -154,6 +154,21 @@ class DatabaseInit {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             `);
 
+            // Suscripciones Web Push por usuario de soporte
+            await database.query(`
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    endpoint VARCHAR(500) NOT NULL,
+                    subscription_json TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_endpoint (endpoint),
+                    INDEX idx_user_id (user_id),
+                    FOREIGN KEY (user_id) REFERENCES support_users(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+
             // Crear tabla de stickers favoritos
             await database.query(`
                 CREATE TABLE IF NOT EXISTS sticker_favorites (
