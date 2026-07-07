@@ -204,7 +204,7 @@ function App() {
             animation: 'fadeIn 0.3s ease'
           }} />
           <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl px-6 pt-6 pb-8" style={{
-            background: 'var(--bg-secondary)',
+            background: 'var(--bg-base)',
             boxShadow: '0 -8px 40px var(--shadow-lg)',
             animation: 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)'
           }}>
