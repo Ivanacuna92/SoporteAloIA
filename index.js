@@ -1,3 +1,7 @@
+// Servir el front buildeado (dist/) en vez de Vite dev.
+// Debe ir ANTES de cargar server.js (que lee NODE_ENV al construirse).
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+
 const whatsappInstanceManager = require('./src/services/whatsappInstanceManager');
 const WebServer = require('./src/web/server');
 const config = require('./src/config/config');

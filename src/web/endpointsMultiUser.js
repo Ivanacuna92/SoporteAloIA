@@ -240,8 +240,11 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
     // Obtener contactos del usuario actual
     app.get('/api/my-contacts', requireAuth, async (req, res) => {
+        const _t0 = Date.now();
+        const _reqId = Math.random().toString(36).slice(2, 8);
         try {
             const userId = req.user.id;
+            console.log(`[MC ${_reqId}] START user=${userId}`);
 
             // Obtener asignaciones del usuario
             const assignments = await database.findAll(
@@ -250,16 +253,25 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 [userId],
                 'last_message_at DESC'
             );
+            console.log(`[MC ${_reqId}] assignments=${assignments.length} in ${Date.now()-_t0}ms`);
 
             // Obtener logs para cada cliente asignado
             const logger = require('../services/logger');
             const humanModeManager = require('../services/humanModeManager');
 
+            // Límite de mensajes por contacto para acelerar la lista.
+            // ChatPanel muestra INITIAL_MESSAGES=50 al abrir un chat.
+            const CONTACT_LIST_MSG_LIMIT = 50;
+
             const contacts = await Promise.all(
                 assignments.map(async (assignment) => {
-                    const logs = await logger.getLogsByClientPhone(assignment.client_phone);
+                    const [logs, counts, rawMode] = await Promise.all([
+                        logger.getLogsByClientPhone(assignment.client_phone, CONTACT_LIST_MSG_LIMIT),
+                        logger.getMessageCountsByClientPhone(assignment.client_phone),
+                        humanModeManager.getMode(assignment.client_phone)
+                    ]);
 
-                    // Agrupar mensajes
+                    // Agrupar mensajes (solo los últimos CONTACT_LIST_MSG_LIMIT)
                     const messages = logs.map(log => ({
                         type: log.type || log.role?.toUpperCase(),
                         message: log.message,
@@ -270,7 +282,6 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         userName: log.userName,
                         participant: log.participant,
                         participantPic: log.participantPic || null,
-                        // Campos de medios
                         hasMedia: log.hasMedia || false,
                         mediaType: log.mediaType,
                         mediaUrl: log.mediaUrl,
@@ -283,29 +294,26 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         quotedMsg: log.quotedMsg || null
                     }));
 
-                    // Obtener modo actual (solo humano o soporte, sin IA) - DEBE SER AWAIT
-                    const rawMode = await humanModeManager.getMode(assignment.client_phone);
-                    const mode = rawMode === 'support' ? 'support' : 'human'; // Solo 2 modos posibles
+                    const mode = rawMode === 'support' ? 'support' : 'human';
                     const isHumanMode = mode === 'human';
 
-                    // Los mensajes vienen en orden ASC (más antiguo primero), entonces el último índice es el mensaje más reciente
-                    // IMPORTANTE: Guardar ANTES del reverse()
+                    // messages viene en ASC → el último elemento es el más reciente
                     const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
 
                     return {
                         phone: assignment.client_phone,
                         name: assignment.group_name || assignment.client_phone,
-                        isGroup: assignment.is_group || false, // Ahora puede ser grupo
+                        isGroup: assignment.is_group || false,
                         groupName: assignment.group_name,
-                        groupPicture: assignment.group_picture, // URL de la imagen del grupo
+                        groupPicture: assignment.group_picture,
                         isArchived: Boolean(assignment.is_archived),
-                        messages: messages.reverse(), // Orden cronológico
-                        totalMessages: messages.length,
-                        userMessages: messages.filter(m => m.type === 'USER' || m.role === 'cliente').length,
-                        botMessages: messages.filter(m => m.type === 'BOT' || m.role === 'bot').length,
+                        messages: messages.reverse(), // DESC (más reciente primero) — el frontend reversea de nuevo
+                        totalMessages: counts.total,
+                        userMessages: counts.userMessages,
+                        botMessages: counts.botMessages,
                         lastActivity: assignment.last_message_at,
                         isHumanMode,
-                        mode, // Siempre 'human' o 'support'
+                        mode,
                         lastMessage: lastMsg ? {
                             text: lastMsg.message,
                             timestamp: lastMsg.timestamp,
@@ -317,9 +325,10 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 })
             );
 
+            console.log(`[MC ${_reqId}] DONE contacts=${contacts.length} total=${Date.now()-_t0}ms`);
             res.json(contacts);
         } catch (error) {
-            console.error('Error obteniendo contactos del usuario:', error);
+            console.error(`[MC ${_reqId}] ERROR after ${Date.now()-_t0}ms:`, error);
             res.status(500).json({ error: 'Error obteniendo contactos' });
         }
     });

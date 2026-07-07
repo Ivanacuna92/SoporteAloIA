@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
@@ -32,6 +33,9 @@ class WebServer {
     }
 
     setupMiddleware() {
+        // Compresión gzip/brotli — crítico para payloads grandes como /api/my-contacts
+        this.app.use(compression());
+
         this.app.use(cors({
             origin: true,
             credentials: true

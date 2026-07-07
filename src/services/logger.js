@@ -307,7 +307,7 @@ class Logger {
         }
     }
 
-    async getLogsByClientPhone(clientPhone) {
+    async getLogsByClientPhone(clientPhone, limit = null) {
         if (!clientPhone) {
             return [];
         }
@@ -315,13 +315,25 @@ class Logger {
         await this._ensureProfileTable();
 
         try {
-            const logs = await database.query(
-                `SELECT cl.*, pp.profile_picture as participant_pic
-                 FROM conversation_logs cl
-                 LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
-                 WHERE cl.user_id = ? ORDER BY cl.timestamp ASC`,
-                [clientPhone]
-            );
+            // Si se pasa `limit`, traer solo los últimos N (DESC + LIMIT) y luego revertir
+            // para mantener el orden cronológico ASC que esperan los callers.
+            const sql = limit
+                ? `SELECT * FROM (
+                       SELECT cl.*, pp.profile_picture as participant_pic
+                       FROM conversation_logs cl
+                       LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
+                       WHERE cl.user_id = ?
+                       ORDER BY cl.timestamp DESC
+                       LIMIT ?
+                   ) AS recent
+                   ORDER BY timestamp ASC`
+                : `SELECT cl.*, pp.profile_picture as participant_pic
+                   FROM conversation_logs cl
+                   LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
+                   WHERE cl.user_id = ? ORDER BY cl.timestamp ASC`;
+
+            const params = limit ? [clientPhone, Number(limit)] : [clientPhone];
+            const logs = await database.query(sql, params);
 
             return logs.map(log => ({
                 timestamp: log.timestamp.toISOString(),
@@ -358,6 +370,32 @@ class Logger {
         } catch (error) {
             console.error('Error obteniendo logs por teléfono de cliente:', error);
             return [];
+        }
+    }
+
+    async getMessageCountsByClientPhone(clientPhone) {
+        if (!clientPhone) {
+            return { total: 0, userMessages: 0, botMessages: 0 };
+        }
+        try {
+            const rows = await database.query(
+                `SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN role = 'cliente' THEN 1 ELSE 0 END) AS userMessages,
+                    SUM(CASE WHEN role = 'bot' THEN 1 ELSE 0 END) AS botMessages
+                 FROM conversation_logs
+                 WHERE user_id = ?`,
+                [clientPhone]
+            );
+            const r = rows[0] || {};
+            return {
+                total: Number(r.total) || 0,
+                userMessages: Number(r.userMessages) || 0,
+                botMessages: Number(r.botMessages) || 0
+            };
+        } catch (error) {
+            console.error('Error obteniendo conteos de mensajes:', error);
+            return { total: 0, userMessages: 0, botMessages: 0 };
         }
     }
 
