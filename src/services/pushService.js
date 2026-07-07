@@ -62,7 +62,7 @@ class PushService {
         await Promise.all(rows.map(async (row) => {
             try {
                 const sub = JSON.parse(row.subscription_json);
-                await webpush.sendNotification(sub, payloadStr, { TTL: 60 });
+                await webpush.sendNotification(sub, payloadStr, { TTL: 86400, urgency: 'high' });
             } catch (err) {
                 const status = err.statusCode;
                 if (status === 404 || status === 410) {

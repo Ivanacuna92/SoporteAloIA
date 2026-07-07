@@ -13,16 +13,12 @@ self.addEventListener('push', function(event) {
     badge: '/aloia-icon.png',
     tag: data.tag || 'aloia-msg',
     renotify: true,
+    vibrate: [200, 100, 200],
     data: { phone: data.phone || null, url: '/' }
   };
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      const hasVisible = clientList.some(function(c) { return c.visibilityState === 'visible'; });
-      if (hasVisible) return; // La app está abierta y a la vista, no duplicar
-      return self.registration.showNotification(title, options);
-    })
-  );
+  // userVisibleOnly=true exige mostrar notificacion siempre; nunca hacer skip
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', function(event) {
