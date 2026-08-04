@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { getMyContacts, getMuteStates, getVapidPublicKey, subscribeToPush } from '../services/api';
 import notificationSound from '../assets/notichida.mp3';
 import alexisSound from '../assets/alexis.mp3';
+import { highlightUlises } from '../utils/rainbowUlises';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -561,7 +562,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
                       color: contact.leftGroup ? 'var(--text-tertiary)' : 'var(--text-primary)',
                       fontWeight: contact.leftGroup ? 400 : getUnreadCount(contact) > 0 ? 700 : 600
                     }}>
-                      {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+                      {contact.isGroup ? highlightUlises(contact.groupName || contact.phone) : highlightUlises(contact.phone)}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {contact.leftGroup ? (
@@ -606,8 +607,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
                     {contact.leftGroup ? 'Ya no eres miembro' :
                      contact.lastMessage ?
                        (contact.isGroup && contact.lastMessage.role === 'cliente' && contact.lastMessage.userName ?
-                         `${contact.lastMessage.userName}: ${contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')}` :
-                         contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')
+                         highlightUlises(`${contact.lastMessage.userName}: ${contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')}`) :
+                         highlightUlises(contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : ''))
                        ) :
                        'Sin mensajes'
                     }

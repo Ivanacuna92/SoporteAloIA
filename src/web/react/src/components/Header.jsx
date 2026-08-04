@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import icono from '../assets/icono.jpeg';
+import { highlightUlises } from '../utils/rainbowUlises';
 
 function Header({ currentView, onViewChange, user }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -75,7 +76,7 @@ function Header({ currentView, onViewChange, user }) {
                 {user.name?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div className="text-xs">
-                <div className="font-semibold text-gray-800">{user.name}</div>
+                <div className="font-semibold text-gray-800">{highlightUlises(user.name)}</div>
                 <div className="text-[10px] text-gray-500">{user.role === 'admin' ? 'Admin' : 'Soporte'}</div>
               </div>
             </div>
@@ -144,7 +145,7 @@ function Header({ currentView, onViewChange, user }) {
               {user.name?.charAt(0).toUpperCase() || 'U'}
             </div>
             <div className="text-xs flex-1">
-              <div className="font-semibold text-gray-800">{user.name}</div>
+              <div className="font-semibold text-gray-800">{highlightUlises(user.name)}</div>
               <div className="text-[10px] text-gray-500">{user.role === 'admin' ? 'Admin' : 'Soporte'}</div>
             </div>
           </div>

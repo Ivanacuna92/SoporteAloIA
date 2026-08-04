@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Toast from './Toast';
+import { highlightUlises } from '../utils/rainbowUlises';
 
 function UserAdmin() {
   const [users, setUsers] = useState([]);
@@ -205,7 +206,7 @@ function UserAdmin() {
                     }}>
                       {user.name?.charAt(0).toUpperCase()}
                     </div>
-                    <span className="font-medium text-gray-800">{user.name}</span>
+                    <span className="font-medium text-gray-800">{highlightUlises(user.name)}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-600">{user.email}</td>

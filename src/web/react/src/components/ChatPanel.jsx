@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
 import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact } from '../services/api';
+import { highlightUlises, processChildrenForUlises } from '../utils/rainbowUlises';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -1180,7 +1181,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}>
-              {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+              {contact.isGroup ? highlightUlises(contact.groupName || contact.phone) : highlightUlises(contact.phone)}
             </div>
             <div style={{
               fontFamily: 'Sora, sans-serif',
@@ -1612,12 +1613,12 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                         color: getParticipantColor(msg.userName || 'Usuario', isDarkMode)
                       }
                     }>
-                    {msg.userName || 'Usuario'}
+                    {highlightUlises(msg.userName || 'Usuario')}
                   </div>
                 )}
                 {isClient && (
                 <div className={`text-[10px] font-semibold mb-1 ${contact.isGroup && isClient ? 'hidden' : ''} text-gray-500 dark:text-gray-400`}>
-                  {msg.userName || 'Cliente'}
+                  {highlightUlises(msg.userName || 'Cliente')}
                 </div>
                 )}
                 <div className="text-sm leading-relaxed break-words overflow-hidden">
@@ -1774,10 +1775,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                         }}
                       >
                         <div className="text-[10px] font-bold mb-1" style={{ color: quotedColor }}>
-                          {quotedName}
+                          {highlightUlises(quotedName)}
                         </div>
                         <div className="text-xs truncate" style={{ whiteSpace: 'pre-wrap', color: isDarkMode ? '#cbd5e1' : '#475569' }}>
-                          {resolveMentions(msg.quotedMsg.body, contact.messages, groupParticipants, !isClient) || '[Mensaje sin texto]'}
+                          {processChildrenForUlises(resolveMentions(msg.quotedMsg.body, contact.messages, groupParticipants, !isClient)) || '[Mensaje sin texto]'}
                         </div>
                       </div>
                     );
@@ -1789,10 +1790,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       <span style={{ whiteSpace: 'pre-wrap', fontStyle: 'italic', opacity: 0.5 }}>Se elimino este mensaje</span>
                     ) : isClient || isHumanOrBot ? (
                       <span style={{ whiteSpace: 'pre-wrap' }}>
-                        {isClient ? resolveMentions(normalizeUppercase(msg.message), contact.messages, groupParticipants, false) : resolveMentions(msg.message, contact.messages, groupParticipants, true)}
+                        {isClient ? processChildrenForUlises(resolveMentions(normalizeUppercase(msg.message), contact.messages, groupParticipants, false)) : processChildrenForUlises(resolveMentions(msg.message, contact.messages, groupParticipants, true))}
                       </span>
                     ) : (
-                      <span style={{ whiteSpace: 'pre-wrap' }}>{resolveMentions(msg.message, contact.messages, groupParticipants, !isClient)}</span>
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{processChildrenForUlises(resolveMentions(msg.message, contact.messages, groupParticipants, !isClient))}</span>
                     )
                   )}
                   {/* Spacer invisible para reservar espacio del timestamp */}
@@ -2008,7 +2009,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 <div className="w-1 h-10 rounded-full" style={{ background: '#00A19C' }}></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold mb-0.5" style={{ color: '#00A19C' }}>
-                    Respondiendo a {quotedMessage.userName || 'Usuario'}
+                    {highlightUlises(`Respondiendo a ${quotedMessage.userName || 'Usuario'}`)}
                   </div>
                   <div className="text-xs truncate" style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>
                     {quotedMessage.message || '[Mensaje sin texto]'}
@@ -2405,7 +2406,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
             <div className="space-y-3">
               <div>
                 <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Nombre</div>
-                <div className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>{contactInfoModal.name || 'Sin nombre'}</div>
+                <div className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>{highlightUlises(contactInfoModal.name || 'Sin nombre')}</div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Número</div>
