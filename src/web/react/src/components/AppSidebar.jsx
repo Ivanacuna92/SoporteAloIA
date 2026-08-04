@@ -22,15 +22,17 @@ function AppSidebar({ currentView = 'contacts', onViewChange, darkMode, onToggle
       style={{ width: 72, padding: '18px 0' }}
     >
       {/* Logo */}
-      <div
-        className="rounded-[13px] flex items-center justify-center mb-[22px] flex-shrink-0"
+      <div className="flex items-center justify-center mb-[22px] flex-shrink-0"
         style={{
-          width: 42,
-          height: 42,
-          background: 'linear-gradient(135deg, var(--accent), var(--accent2))',
+            width: 42,
+            height: 42,
         }}
       >
-        <i className="ti ti-headset" style={{ fontSize: 22, color: '#fff' }} />
+        <img
+            src="https://ruleta-jet.vercel.app/centro.png"
+            alt="Logo"
+            className="w-full h-full object-contain"
+        />
       </div>
 
       {/* Nav principal */}
