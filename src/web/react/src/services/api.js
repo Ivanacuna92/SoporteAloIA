@@ -554,6 +554,17 @@ export async function getMyContacts(signal) {
   }
 }
 
+// Cargar mensajes anteriores a un timestamp (paginación hacia atrás)
+export async function getContactMessagesBefore(phone, before, limit = 50) {
+  const url = `${API_BASE}/my-contacts/${encodeURIComponent(phone)}/messages?before=${encodeURIComponent(before)}&limit=${limit}`;
+  const response = await fetchWithCredentials(url, { cache: 'no-store' });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Error obteniendo mensajes anteriores');
+  }
+  return response.json();
+}
+
 // Enviar mensaje desde mi instancia (sin parámetro isGroup, grupos desactivados)
 export async function sendMyMessage(phone, message) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message`, {
@@ -921,6 +932,59 @@ export async function unsubscribeFromPush(endpoint) {
     body: JSON.stringify({ endpoint })
   });
   if (!response.ok) throw new Error('Error desuscribiendo push');
+  return response.json();
+}
+
+// Etiquetas de personas Aloia (catálogo fijo seeded en migración 007)
+export async function getChatTags() {
+  const response = await fetchWithCredentials(`${API_BASE}/chat-tags`);
+  if (!response.ok) throw new Error('Error listando etiquetas');
+  return response.json();
+}
+
+export async function setChatTags(phone, tagIds) {
+  const response = await fetchWithCredentials(
+    `${API_BASE}/chat-tag-assignments/${encodeURIComponent(phone)}`,
+    { method: 'PUT', body: JSON.stringify({ tagIds }) }
+  );
+  if (!response.ok) throw new Error('Error guardando etiquetas');
+  return response.json();
+}
+
+export async function backfillBotMembership({ commit = false } = {}) {
+  const qs = commit ? '?commit=1' : '';
+  const response = await fetchWithCredentials(
+    `${API_BASE}/chat-tags/backfill-bot-membership${qs}`,
+    { method: 'POST' }
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Error ejecutando backfill');
+  }
+  return response.json();
+}
+
+export async function testNotifyChatTag(tagId) {
+  const response = await fetchWithCredentials(
+    `${API_BASE}/chat-tags/${tagId}/test-notify`,
+    { method: 'POST' }
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Error enviando prueba');
+  }
+  return response.json();
+}
+
+export async function updateChatTagPhone(tagId, phone) {
+  const response = await fetchWithCredentials(
+    `${API_BASE}/chat-tags/${tagId}`,
+    { method: 'PUT', body: JSON.stringify({ phone }) }
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Error guardando teléfono');
+  }
   return response.json();
 }
 

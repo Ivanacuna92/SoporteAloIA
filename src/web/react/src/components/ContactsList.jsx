@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { getMyContacts, getMuteStates, getVapidPublicKey, subscribeToPush } from '../services/api';
+import { getMyContacts, getMuteStates, getVapidPublicKey, subscribeToPush, getChatTags } from '../services/api';
 import notificationSound from '../assets/notichida.mp3';
 import alexisSound from '../assets/alexis.mp3';
-import { highlightUlises } from '../utils/rainbowUlises';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -26,6 +25,16 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
     const saved = localStorage.getItem('lastReadMessages');
     return saved ? JSON.parse(saved) : {};
   });
+  // Filtro adicional por miembro del equipo Aloia (tags fijos: Max, Ulises,
+  // Juan, Christian). Como todos los operadores comparten un único login,
+  // este filtro es una ayuda visual para que cada quien aísle "sus chats"
+  // sin cambiar nada en el backend. null = sin filtro (ver todos).
+  const [teamTags, setTeamTags] = useState([]);
+  const [selectedTeamTagId, setSelectedTeamTagId] = useState(() => {
+    const saved = localStorage.getItem('selectedTeamTagId');
+    const n = saved ? Number(saved) : NaN;
+    return Number.isFinite(n) ? n : null;
+  });
   const audioRef = useRef(null);
   const alexisAudioRef = useRef(null);
   const previousTotalMessages = useRef(0);
@@ -42,6 +51,22 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
   useEffect(() => {
     localStorage.setItem('lastReadMessages', JSON.stringify(lastReadMessages));
   }, [lastReadMessages]);
+
+  useEffect(() => {
+    if (selectedTeamTagId === null) localStorage.removeItem('selectedTeamTagId');
+    else localStorage.setItem('selectedTeamTagId', String(selectedTeamTagId));
+  }, [selectedTeamTagId]);
+
+  // Carga única del catálogo de tags del equipo. Si se amplía la lista
+  // desde el panel de asignación, basta recargar la página para verlo.
+  useEffect(() => {
+    (async () => {
+      try {
+        const t = await getChatTags();
+        setTeamTags(Array.isArray(t) ? t : []);
+      } catch (e) { /* ignore */ }
+    })();
+  }, []);
 
   const loadContacts = async () => {
     if (loadingRef.current) {
@@ -125,17 +150,33 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
       if (currentSelected) {
         const updatedContact = data.find(c => c.phone === currentSelected.phone);
         if (updatedContact) {
+          // Preservar los mensajes históricos que el usuario pudo haber cargado
+          // con "Cargar anteriores". El backend sólo trae los 50 más recientes,
+          // así que si currentSelected tiene más mensajes viejos los re-añadimos.
+          const incomingOldestTs =
+            updatedContact.messages[updatedContact.messages.length - 1]?.timestamp;
+          const extraOlder = incomingOldestTs
+            ? currentSelected.messages.filter((m) => m.timestamp < incomingOldestTs)
+            : [];
+          const mergedMessages = [...updatedContact.messages, ...extraOlder];
+          const mergedContact = { ...updatedContact, messages: mergedMessages };
+
+          // Comparamos sólo los mensajes "recientes" (los que el backend acaba de
+          // enviar), no los históricos — así evitamos re-renderizar cuando sólo
+          // cambió el set histórico ya en memoria.
+          const recentCount = updatedContact.messages.length;
+          const currentRecent = currentSelected.messages.slice(0, recentCount);
           const hasChanges =
-            updatedContact.messages.length !== currentSelected.messages.length ||
+            updatedContact.messages.length !== currentRecent.length ||
             updatedContact.mode !== currentSelected.mode ||
             JSON.stringify(updatedContact.messages.map(m => m.message + (m.isEdited ? '1' : '0') + (m.status || ''))) !==
-            JSON.stringify(currentSelected.messages.map(m => m.message + (m.isEdited ? '1' : '0') + (m.status || '')));
+            JSON.stringify(currentRecent.map(m => m.message + (m.isEdited ? '1' : '0') + (m.status || '')));
 
           if (hasChanges) {
-            onSelectContact(updatedContact);
+            onSelectContact(mergedContact);
             setLastReadMessages(prev => ({
               ...prev,
-              [updatedContact.phone]: updatedContact.messages.length
+              [updatedContact.phone]: mergedContact.messages.length
             }));
           }
         }
@@ -270,6 +311,12 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
         if (activeFilter === 'unread' && getUnreadCount(contact) === 0) return false;
       }
 
+      // Filtro por miembro del equipo: si hay uno activo, el chat tiene que
+      // tener ese tag entre sus asignaciones.
+      if (selectedTeamTagId !== null) {
+        if (!(contact.tags || []).some((t) => t.id === selectedTeamTagId)) return false;
+      }
+
       const searchLower = searchTerm.toLowerCase();
       if (!searchLower) return true;
 
@@ -368,6 +415,62 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
           />
         </div>
       </div>
+
+      {/* Filtro por miembro del equipo Aloia. Siempre visible, aun cuando
+          el sidebar controla el filtro principal, porque es un corte
+          ortogonal (quién atiende) a la vista actual (todos/no leídos). */}
+      {teamTags.length > 0 && (
+        <div
+          className="flex gap-[6px]"
+          style={{ padding: '0 16px 12px', overflowX: 'auto', flexWrap: 'nowrap' }}
+        >
+          <button
+            onClick={() => setSelectedTeamTagId(null)}
+            className="flex items-center gap-1.5 transition-all flex-shrink-0"
+            style={{
+              padding: '5px 12px',
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 500,
+              fontFamily: 'Sora, sans-serif',
+              cursor: 'pointer',
+              background: selectedTeamTagId === null ? 'var(--bg-active)' : 'transparent',
+              border: `1px solid ${selectedTeamTagId === null ? 'var(--border-active)' : 'var(--border)'}`,
+              color: selectedTeamTagId === null ? 'var(--accent)' : 'var(--text-secondary)',
+            }}
+            onMouseEnter={(e) => { if (selectedTeamTagId !== null) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+            onMouseLeave={(e) => { if (selectedTeamTagId !== null) e.currentTarget.style.background = 'transparent'; }}
+          >
+            Todos
+          </button>
+          {teamTags.map((t) => {
+            const isActive = selectedTeamTagId === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setSelectedTeamTagId(t.id)}
+                className="flex items-center gap-1.5 transition-all flex-shrink-0"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  fontFamily: 'Sora, sans-serif',
+                  cursor: 'pointer',
+                  background: isActive ? `${t.color}22` : 'transparent',
+                  border: `1px solid ${isActive ? `${t.color}99` : 'var(--border)'}`,
+                  color: isActive ? t.color : 'var(--text-secondary)',
+                }}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: t.color, display: 'inline-block' }} />
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filter pills (ocultos si el sidebar ya controla el filtro) */}
       {!hideFilterPills && (
@@ -468,7 +571,9 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '6px 10px' }}>
         {filteredContacts.length === 0 ? (
           <div className="text-center text-sm" style={{ padding: '48px 0', color: 'var(--text-tertiary)' }}>
-            {activeFilter === 'archived'
+            {selectedTeamTagId !== null && teamTags.find((t) => t.id === selectedTeamTagId)
+              ? `No hay chats asignados a ${teamTags.find((t) => t.id === selectedTeamTagId).name}`
+              : activeFilter === 'archived'
               ? 'No hay conversaciones archivadas'
               : activeFilter === 'unread'
               ? 'No tienes mensajes sin leer'
@@ -562,7 +667,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
                       color: contact.leftGroup ? 'var(--text-tertiary)' : 'var(--text-primary)',
                       fontWeight: contact.leftGroup ? 400 : getUnreadCount(contact) > 0 ? 700 : 600
                     }}>
-                      {contact.isGroup ? highlightUlises(contact.groupName || contact.phone) : highlightUlises(contact.phone)}
+                      {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {contact.leftGroup ? (
@@ -607,12 +712,31 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
                     {contact.leftGroup ? 'Ya no eres miembro' :
                      contact.lastMessage ?
                        (contact.isGroup && contact.lastMessage.role === 'cliente' && contact.lastMessage.userName ?
-                         highlightUlises(`${contact.lastMessage.userName}: ${contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')}`) :
-                         highlightUlises(contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : ''))
+                         `${contact.lastMessage.userName}: ${contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')}` :
+                         contact.lastMessage.text || (contact.lastMessage.mediaType === 'sticker' ? '🎭 Sticker' : contact.lastMessage.mediaType === 'image' ? '📷 Imagen' : contact.lastMessage.mediaType === 'video' ? '🎥 Video' : contact.lastMessage.mediaType === 'audio' ? '🎵 Audio' : contact.lastMessage.mediaType === 'document' ? '📎 Documento' : '')
                        ) :
                        'Sin mensajes'
                     }
                   </p>
+                  {/* Etiquetas de personas Aloia asignadas (sólo lectura — se
+                      editan desde la vista "Asignación" del sidebar). */}
+                  {(contact.tags || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {contact.tags.map((t) => (
+                        <span
+                          key={t.id}
+                          className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                          style={{
+                            background: `${t.color}22`,
+                            color: t.color,
+                            border: `1px solid ${t.color}55`,
+                          }}
+                        >
+                          {t.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

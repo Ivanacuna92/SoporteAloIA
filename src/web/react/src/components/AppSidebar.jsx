@@ -6,10 +6,11 @@ import React from 'react';
  */
 function AppSidebar({ currentView = 'contacts', onViewChange, darkMode, onToggleDarkMode, onLogout }) {
   const navItems = [
-    { id: 'contacts', icon: 'ti-message-2', title: 'Conversaciones' },
-    { id: 'inbox',    icon: 'ti-inbox',     title: 'Bandeja de entrada (sin leer)' },
-    { id: 'archived', icon: 'ti-archive',   title: 'Archivados' },
-    { id: 'stats',    icon: 'ti-chart-pie', title: 'Estadísticas' },
+    { id: 'contacts',    icon: 'ti-message-2', title: 'Conversaciones' },
+    { id: 'inbox',       icon: 'ti-inbox',     title: 'Bandeja de entrada (sin leer)' },
+    { id: 'archived',    icon: 'ti-archive',   title: 'Archivados' },
+    { id: 'assignments', icon: 'ti-tags',      title: 'Asignación de chats a equipo Aloia' },
+    { id: 'stats',       icon: 'ti-chart-pie', title: 'Estadísticas' },
   ];
 
   const handleClick = (id) => {
@@ -29,8 +30,8 @@ function AppSidebar({ currentView = 'contacts', onViewChange, darkMode, onToggle
         }}
       >
         <img
-            src="https://ruleta-jet.vercel.app/centro.png"
-            alt="Logo"
+            src="/aloia-icon.png"
+            alt="Aloia"
             className="w-full h-full object-contain"
         />
       </div>

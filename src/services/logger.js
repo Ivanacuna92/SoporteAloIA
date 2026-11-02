@@ -167,15 +167,20 @@ class Logger {
 
     async getLogs(date = null, limit = 1000, offset = 0) {
         try {
-            // Solo obtener de BD
-            let query = 'SELECT * FROM conversation_logs';
+            // Columnas explícitas: las que consume el .map de abajo (sin id, session_id, is_human_response, participant*, is_edited, quoted_*).
+            const columns = `
+                timestamp, role, user_id, user_name, is_group,
+                message, message_id, status, response, support_user_id,
+                has_media, media_type, media_url, media_mimetype,
+                media_filename, media_caption, is_forwarded`;
+            let query = `SELECT ${columns} FROM conversation_logs`;
             let params = [];
-            
+
             if (date) {
                 query += ' WHERE DATE(timestamp) = ?';
                 params.push(date);
             }
-            
+
             query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
             params.push(limit, offset);
             
@@ -307,7 +312,7 @@ class Logger {
         }
     }
 
-    async getLogsByClientPhone(clientPhone, limit = null) {
+    async getLogsByClientPhone(clientPhone, limit = null, before = null) {
         if (!clientPhone) {
             return [];
         }
@@ -315,25 +320,38 @@ class Logger {
         await this._ensureProfileTable();
 
         try {
-            // Si se pasa `limit`, traer solo los últimos N (DESC + LIMIT) y luego revertir
-            // para mantener el orden cronológico ASC que esperan los callers.
+            // Columnas explícitas: dejamos fuera id, session_id, is_human_response (no las usa el map).
+            const columns = `
+                cl.timestamp, cl.role, cl.user_id, cl.user_name, cl.is_group,
+                cl.message, cl.message_id, cl.status, cl.response, cl.support_user_id,
+                cl.participant,
+                cl.has_media, cl.media_type, cl.media_url, cl.media_mimetype,
+                cl.media_filename, cl.media_caption,
+                cl.is_forwarded, cl.is_edited,
+                cl.has_quoted_msg, cl.quoted_msg_body, cl.quoted_msg_participant, cl.quoted_msg_id,
+                pp.profile_picture AS participant_pic`;
+
+            // Con `limit` traemos DESC+LIMIT y revertimos en app (más barato que envolver en subquery).
+            // Con `before` paginamos hacia atrás: timestamp estrictamente menor al cursor.
+            const whereBefore = before ? ' AND cl.timestamp < ?' : '';
             const sql = limit
-                ? `SELECT * FROM (
-                       SELECT cl.*, pp.profile_picture as participant_pic
-                       FROM conversation_logs cl
-                       LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
-                       WHERE cl.user_id = ?
-                       ORDER BY cl.timestamp DESC
-                       LIMIT ?
-                   ) AS recent
-                   ORDER BY timestamp ASC`
-                : `SELECT cl.*, pp.profile_picture as participant_pic
+                ? `SELECT ${columns}
                    FROM conversation_logs cl
                    LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
-                   WHERE cl.user_id = ? ORDER BY cl.timestamp ASC`;
+                   WHERE cl.user_id = ?${whereBefore}
+                   ORDER BY cl.timestamp DESC
+                   LIMIT ?`
+                : `SELECT ${columns}
+                   FROM conversation_logs cl
+                   LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
+                   WHERE cl.user_id = ?${whereBefore}
+                   ORDER BY cl.timestamp ASC`;
 
-            const params = limit ? [clientPhone, Number(limit)] : [clientPhone];
-            const logs = await database.query(sql, params);
+            const params = [clientPhone];
+            if (before) params.push(new Date(before));
+            if (limit) params.push(Number(limit));
+            const rows = await database.query(sql, params);
+            const logs = limit ? rows.reverse() : rows;
 
             return logs.map(log => ({
                 timestamp: log.timestamp.toISOString(),

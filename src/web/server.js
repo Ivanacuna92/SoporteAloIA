@@ -1416,6 +1416,21 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
         const multiUserEndpoints = require('./endpointsMultiUser');
         multiUserEndpoints(this.app, requireAuth, requireAdmin);
 
+        // ===== TEMPORAL: QR publico por user_id para bypass del UI roto =====
+        this.app.get("/qr-data/user/:id", (req, res) => {
+            try {
+                const mgr = global.whatsappInstanceManager;
+                if (!mgr) return res.json({ qr: null, status: "no_manager", message: "InstanceManager no inicializado" });
+                const inst = mgr.getInstance(parseInt(req.params.id, 10));
+                if (!inst) return res.json({ qr: null, status: "not_found", message: "Sin instancia" });
+                res.json({ qr: inst.qr || null, status: inst.status, phone: inst.phone || null });
+            } catch (e) { res.status(500).json({ error: String(e) }); }
+        });
+        this.app.get("/qr-user/:id", (req, res) => {
+            const id = parseInt(req.params.id, 10) || 2;
+            res.type("html").send(`<!doctype html><html><head><meta charset=utf-8><title>QR user ${id}</title><style>body{font-family:sans-serif;background:#111;color:#eee;display:flex;flex-direction:column;align-items:center;padding:30px}#c{background:#fff;padding:16px;border-radius:12px;margin-top:16px}#s{margin-top:12px}</style></head><body><h2>Vincular WhatsApp - usuario ${id}</h2><div id=c></div><div id=s>Cargando...</div><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script>let q=null;async function t(){try{const r=await fetch("/qr-data/user/${id}");const d=await r.json();document.getElementById("s").textContent="Estado: "+(d.status||"?")+(d.phone?" ("+d.phone+")":"");if(d.qr && d.qr!==q){q=d.qr;const el=document.getElementById("c");el.innerHTML="";new QRCode(el,{text:d.qr,width:280,height:280});}if(d.status==="connected"){document.getElementById("c").innerHTML="<h3 style=color:#0a0>Conectado</h3>";}}catch(e){document.getElementById("s").textContent="Error: "+e;}}t();setInterval(t,3000);</script></body></html>`);
+        });
+
         // Servir React app para todas las rutas no-API (solo en producción)
         // IMPORTANTE: Este debe ser el último route handler
         if (process.env.NODE_ENV === 'production') {

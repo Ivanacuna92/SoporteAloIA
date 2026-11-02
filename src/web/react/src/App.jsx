@@ -3,6 +3,7 @@ import ContactsList from './components/ContactsList';
 import ChatPanel from './components/ChatPanel';
 import AppSidebar from './components/AppSidebar';
 import StatsPanel from './components/StatsPanel';
+import AssignmentsPanel from './components/AssignmentsPanel';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
 import QRDisplay from './components/QRDisplay';
@@ -19,7 +20,7 @@ function App() {
   const [currentView, setCurrentView] = useState(() => {
     const saved = localStorage.getItem('currentView');
     // Filtrar valores legacy ('reports', 'tickets', 'session') que ya no existen
-    const valid = ['contacts', 'inbox', 'archived', 'stats'];
+    const valid = ['contacts', 'inbox', 'archived', 'assignments', 'stats'];
     return valid.includes(saved) ? saved : 'contacts';
   });
   // Filtro de ContactsList controlado desde el sidebar
@@ -243,33 +244,41 @@ function App() {
             onToggleDarkMode={() => setDarkMode(d => !d)}
             onLogout={handleLogout}
           />
-          <div className={`${selectedContact ? 'hidden md:flex' : 'flex'} flex-shrink-0 w-full md:w-[300px] max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
-            {currentView === 'stats' ? (
-              <StatsPanel contacts={contacts} />
-            ) : (
-              <ContactsList
-                contacts={contacts}
-                setContacts={setContacts}
-                selectedContact={selectedContact}
-                onSelectContact={setSelectedContact}
-                activeFilter={activeFilter}
-                setActiveFilter={setActiveFilter}
-                hideFilterPills={true}
-              />
-            )}
-          </div>
-          <div className={`${selectedContact ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
-            <ChatPanel
-              contact={selectedContact}
-              onUpdateContact={(updatedContact) => {
-                setSelectedContact(updatedContact);
-                setContacts(prev => prev.map(c =>
-                  c.phone === updatedContact.phone ? updatedContact : c
-                ));
-              }}
-              onClose={() => setSelectedContact(null)}
-            />
-          </div>
+          {currentView === 'assignments' ? (
+            <div className="flex-1 min-w-0 max-w-full">
+              <AssignmentsPanel />
+            </div>
+          ) : (
+            <>
+              <div className={`${selectedContact ? 'hidden md:flex' : 'flex'} flex-shrink-0 w-full md:w-[300px] max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
+                {currentView === 'stats' ? (
+                  <StatsPanel contacts={contacts} />
+                ) : (
+                  <ContactsList
+                    contacts={contacts}
+                    setContacts={setContacts}
+                    selectedContact={selectedContact}
+                    onSelectContact={setSelectedContact}
+                    activeFilter={activeFilter}
+                    setActiveFilter={setActiveFilter}
+                    hideFilterPills={true}
+                  />
+                )}
+              </div>
+              <div className={`${selectedContact ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 max-w-full md:rounded-[22px] md:overflow-hidden md:glass-surface`}>
+                <ChatPanel
+                  contact={selectedContact}
+                  onUpdateContact={(updatedContact) => {
+                    setSelectedContact(updatedContact);
+                    setContacts(prev => prev.map(c =>
+                      c.phone === updatedContact.phone ? updatedContact : c
+                    ));
+                  }}
+                  onClose={() => setSelectedContact(null)}
+                />
+              </div>
+            </>
+          )}
       </div>
     </div>
   );

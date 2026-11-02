@@ -290,6 +290,35 @@ class WhatsAppInstanceManager {
                 await this.handleIncomingMessage(supportUserId, m);
             });
 
+            // Detecta cuando sacan al bot de un grupo (acción 'remove' con el
+            // JID del bot entre los participantes afectados). Al detectarlo
+            // SOLO marca bot_left_group_at — el archivo o no se hace manual
+            // desde la UI. El panel de asignaciones filtra por este campo.
+            sock.ev.on('group-participants.update', async (update) => {
+                try {
+                    const { id: groupJid, participants, action } = update;
+                    if (action !== 'remove' || !groupJid) return;
+                    const botJid = sock.user?.id;
+                    const botDigits = (botJid || '').split(':')[0].split('@')[0];
+                    const kicked = participants.some((p) => {
+                        const pDigits = String(p).split(':')[0].split('@')[0];
+                        return pDigits === botDigits;
+                    });
+                    if (!kicked) return;
+                    const groupId = groupJid.replace('@g.us', '');
+                    console.log(`[bot-kicked] bot removido del grupo ${groupId} — marcando bot_left_group_at`);
+                    await database.query(
+                        'UPDATE client_assignments SET bot_left_group_at = NOW() WHERE client_phone = ? AND bot_left_group_at IS NULL',
+                        [groupId]
+                    );
+                    if (global.io) {
+                        global.io.emit('new-message', { phone: groupId, reason: 'bot-kicked' });
+                    }
+                } catch (e) {
+                    console.error('[bot-kicked] error:', e.message);
+                }
+            });
+
             // Actualizar BD
             await this.updateInstanceInDB(supportUserId, {
                 instance_name: instanceName,
@@ -626,6 +655,47 @@ class WhatsAppInstanceManager {
                 }
 
                 console.log(`✅ Mensaje propio registrado para grupo ${groupId}`);
+
+                // Notificar al Team Aloia también cuando el operador escribe
+                // desde el panel. Mismo mecanismo que el branch de cliente,
+                // sólo cambia la etiqueta de "De:" para distinguir el origen.
+                try {
+                    const tagRows = await database.query(
+                        `SELECT t.id, t.name, t.phone
+                         FROM chat_tag_assignments a
+                         JOIN chat_tags t ON t.id = a.tag_id
+                         WHERE a.chat_phone = ? AND t.phone IS NOT NULL AND t.phone <> ''`,
+                        [groupId]
+                    );
+                    if (tagRows.length > 0) {
+                        if (!this._tagNotifCooldown) this._tagNotifCooldown = new Map();
+                        const COOLDOWN_MS = 5 * 60 * 1000;
+                        const nowTs = Date.now();
+                        const previewText = conversation
+                            ? (conversation.length > 120 ? conversation.substring(0, 120) + '…' : conversation)
+                            : (hasMedia ? `[${mediaInfo?.media_type || 'adjunto'}]` : '[mensaje]');
+                        const chatDisplay = existingAssignment.group_name || groupId;
+                        const notifBody = `🔔 *Aviso Aloia*\n` +
+                            `Chat: *${chatDisplay}*\n` +
+                            `De: ${userName} (operador)\n` +
+                            `Mensaje: ${previewText}`;
+                        if (previewText !== "[mensaje]") for (const row of tagRows) {
+                            const rawDigits = String(row.phone).replace(/[^0-9]/g, '');
+                            if (!rawDigits) continue;
+                            const digits = rawDigits.length === 10 ? `521${rawDigits}` : rawDigits;
+                            const key = `${digits}|${groupId}`;
+                            const last = this._tagNotifCooldown.get(key) || 0;
+                            if (nowTs - last < COOLDOWN_MS) continue;
+                            this._tagNotifCooldown.set(key, nowTs);
+                            const jid = `${digits}@s.whatsapp.net`;
+                            instanceData.sock.sendMessage(jid, { text: notifBody })
+                                .catch((e) => console.warn(`[tag-notif] fallo a ${jid}: ${e.message}`));
+                        }
+                    }
+                } catch (e) {
+                    console.error('[tag-notif] error enviando avisos (fromMe):', e.message);
+                }
+
                 return;
             }
 
@@ -913,6 +983,49 @@ class WhatsAppInstanceManager {
                     tag: groupId
                 }).catch(() => {});
             } catch (e) { /* no bloquear el flujo por push */ }
+
+            // Notificar por WhatsApp a cada persona del Equipo Aloia que esté
+            // etiquetada en este chat. Usa el mismo sock del bot — así el
+            // destinatario recibe el aviso del mismo número que atiende el grupo.
+            // Rate-limit por (phone, chat) con cooldown en memoria para evitar
+            // reenviar en ráfagas rápidas de mensajes.
+            try {
+                const tagRows = await database.query(
+                    `SELECT t.id, t.name, t.phone
+                     FROM chat_tag_assignments a
+                     JOIN chat_tags t ON t.id = a.tag_id
+                     WHERE a.chat_phone = ? AND t.phone IS NOT NULL AND t.phone <> ''`,
+                    [groupId]
+                );
+                if (tagRows.length > 0) {
+                    if (!this._tagNotifCooldown) this._tagNotifCooldown = new Map();
+                    const COOLDOWN_MS = 5 * 60 * 1000;
+                    const nowTs = Date.now();
+                    const previewText = messageText
+                        ? (messageText.length > 120 ? messageText.substring(0, 120) + '…' : messageText)
+                        : (hasMedia ? (hasMedia && mediaInfo?.media_type ? `[${mediaInfo.media_type}]` : '[adjunto]') : '[mensaje]');
+                    const chatDisplay = groupName || groupId;
+                    const notifBody = `🔔 *${tagRows[0].name ? 'Aviso Aloia' : 'Aviso'}*\n` +
+                        `Chat: *${chatDisplay}*\n` +
+                        `De: ${userName}\n` +
+                        `Mensaje: ${previewText}`;
+                    if (previewText !== "[mensaje]") for (const row of tagRows) {
+                        // Normalización MX: 10 dígitos → prefija '521'. 11+ asume lada país.
+                        const rawDigits = String(row.phone).replace(/[^0-9]/g, '');
+                        if (!rawDigits) continue;
+                        const digits = rawDigits.length === 10 ? `521${rawDigits}` : rawDigits;
+                        const key = `${digits}|${groupId}`;
+                        const last = this._tagNotifCooldown.get(key) || 0;
+                        if (nowTs - last < COOLDOWN_MS) continue;
+                        this._tagNotifCooldown.set(key, nowTs);
+                        const jid = `${digits}@s.whatsapp.net`;
+                        instanceData.sock.sendMessage(jid, { text: notifBody })
+                            .catch((e) => console.warn(`[tag-notif] fallo a ${jid}: ${e.message}`));
+                    }
+                }
+            } catch (e) {
+                console.error('[tag-notif] error enviando avisos a Team Aloia:', e.message);
+            }
 
             // YA NO HAY IA - Solo registrar el mensaje entrante
             // Los humanos responderán manualmente desde el panel

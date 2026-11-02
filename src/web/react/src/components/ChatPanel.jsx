@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact } from '../services/api';
-import { highlightUlises, processChildrenForUlises } from '../utils/rainbowUlises';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -324,11 +323,15 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const msgPhone = contact?.phone;
   const allMessages = React.useMemo(() => contact?.messages?.slice().reverse() || [], [contact?.messages, msgPhone]);
   const [visibleCount, setVisibleCount] = useState(INITIAL_MESSAGES);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const skipAutoScrollRef = useRef(false);
   const reversedMessages = React.useMemo(() => allMessages.slice(-visibleCount), [allMessages, visibleCount]);
-  const hasMore = allMessages.length > visibleCount;
+  const hasMoreLocal = allMessages.length > visibleCount;
+  const hasMoreServer = (contact?.totalMessages || 0) > allMessages.length;
+  const hasMore = hasMoreLocal || hasMoreServer;
 
   // Reset visible count cuando cambia de contacto
-  useEffect(() => { setVisibleCount(INITIAL_MESSAGES); }, [msgPhone]);
+  useEffect(() => { setVisibleCount(INITIAL_MESSAGES); setLoadingMore(false); }, [msgPhone]);
 
   const [sending, setSending] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
@@ -640,7 +643,12 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   }, [contact?.phone]);
 
   useEffect(() => {
-    // Scroll suave cuando llegan nuevos mensajes
+    // Scroll suave cuando llegan nuevos mensajes.
+    // Skipeamos si acabamos de prepender mensajes viejos (cargar anteriores).
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     if (contact?.messages && contact.messages.length > 0) {
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1181,7 +1189,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}>
-              {contact.isGroup ? highlightUlises(contact.groupName || contact.phone) : highlightUlises(contact.phone)}
+              {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
             </div>
             <div style={{
               fontFamily: 'Sora, sans-serif',
@@ -1410,24 +1418,59 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
         {hasMore && (
           <div className="flex justify-center pt-2 pb-3">
             <button
-              onClick={() => {
+              disabled={loadingMore}
+              onClick={async () => {
                 const container = messagesContainerRef.current;
                 const prevScrollHeight = container?.scrollHeight || 0;
-                setVisibleCount(prev => prev + 50);
-                requestAnimationFrame(() => {
+                const restoreScroll = () => requestAnimationFrame(() => {
                   if (container) {
-                    const newScrollHeight = container.scrollHeight;
-                    container.scrollTop = newScrollHeight - prevScrollHeight;
+                    container.scrollTop = container.scrollHeight - prevScrollHeight;
                   }
                 });
+
+                if (hasMoreLocal) {
+                  setVisibleCount(prev => prev + 50);
+                  restoreScroll();
+                  return;
+                }
+
+                // Pedir al backend mensajes anteriores al más viejo cargado
+                if (!onUpdateContact || loadingMore) return;
+                const oldest = contact.messages?.[contact.messages.length - 1];
+                if (!oldest?.timestamp) return;
+                setLoadingMore(true);
+                try {
+                  const { messages: older } = await getContactMessagesBefore(contact.phone, oldest.timestamp, 50);
+                  if (older && older.length) {
+                    // older viene ASC (viejo→nuevo). contact.messages es DESC (nuevo→viejo).
+                    // Para prepender los viejos al final del array DESC: reverse(older) → DESC y concatenar.
+                    const olderDesc = older.slice().reverse();
+                    const merged = [...contact.messages, ...olderDesc];
+                    skipAutoScrollRef.current = true; // evitar que el auto-scroll al final nos saque
+                    onUpdateContact({ ...contact, messages: merged });
+                    setVisibleCount(prev => prev + older.length);
+                  }
+                  restoreScroll();
+                } catch (err) {
+                  console.error('Error cargando mensajes anteriores:', err);
+                } finally {
+                  setLoadingMore(false);
+                }
               }}
-              className="flex items-center gap-2 text-xs px-5 py-2 rounded-full transition-all hover:scale-105 active:scale-95 shadow-md"
+              className="flex items-center gap-2 text-xs px-5 py-2 rounded-full transition-all hover:scale-105 active:scale-95 shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
               style={{ background: isDarkMode ? '#1e3a3a' : '#00A19C', color: '#fff' }}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-              </svg>
-              Cargar anteriores
+              {loadingMore ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                  <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                </svg>
+              )}
+              {loadingMore ? 'Cargando…' : 'Cargar anteriores'}
             </button>
           </div>
         )}
@@ -1613,12 +1656,12 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                         color: getParticipantColor(msg.userName || 'Usuario', isDarkMode)
                       }
                     }>
-                    {highlightUlises(msg.userName || 'Usuario')}
+                    {msg.userName || 'Usuario'}
                   </div>
                 )}
                 {isClient && (
                 <div className={`text-[10px] font-semibold mb-1 ${contact.isGroup && isClient ? 'hidden' : ''} text-gray-500 dark:text-gray-400`}>
-                  {highlightUlises(msg.userName || 'Cliente')}
+                  {msg.userName || 'Cliente'}
                 </div>
                 )}
                 <div className="text-sm leading-relaxed break-words overflow-hidden">
@@ -1775,10 +1818,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                         }}
                       >
                         <div className="text-[10px] font-bold mb-1" style={{ color: quotedColor }}>
-                          {highlightUlises(quotedName)}
+                          {quotedName}
                         </div>
                         <div className="text-xs truncate" style={{ whiteSpace: 'pre-wrap', color: isDarkMode ? '#cbd5e1' : '#475569' }}>
-                          {processChildrenForUlises(resolveMentions(msg.quotedMsg.body, contact.messages, groupParticipants, !isClient)) || '[Mensaje sin texto]'}
+                          {resolveMentions(msg.quotedMsg.body, contact.messages, groupParticipants, !isClient) || '[Mensaje sin texto]'}
                         </div>
                       </div>
                     );
@@ -1790,10 +1833,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       <span style={{ whiteSpace: 'pre-wrap', fontStyle: 'italic', opacity: 0.5 }}>Se elimino este mensaje</span>
                     ) : isClient || isHumanOrBot ? (
                       <span style={{ whiteSpace: 'pre-wrap' }}>
-                        {isClient ? processChildrenForUlises(resolveMentions(normalizeUppercase(msg.message), contact.messages, groupParticipants, false)) : processChildrenForUlises(resolveMentions(msg.message, contact.messages, groupParticipants, true))}
+                        {isClient ? resolveMentions(normalizeUppercase(msg.message), contact.messages, groupParticipants, false) : resolveMentions(msg.message, contact.messages, groupParticipants, true)}
                       </span>
                     ) : (
-                      <span style={{ whiteSpace: 'pre-wrap' }}>{processChildrenForUlises(resolveMentions(msg.message, contact.messages, groupParticipants, !isClient))}</span>
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{resolveMentions(msg.message, contact.messages, groupParticipants, !isClient)}</span>
                     )
                   )}
                   {/* Spacer invisible para reservar espacio del timestamp */}
@@ -2009,7 +2052,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 <div className="w-1 h-10 rounded-full" style={{ background: '#00A19C' }}></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold mb-0.5" style={{ color: '#00A19C' }}>
-                    {highlightUlises(`Respondiendo a ${quotedMessage.userName || 'Usuario'}`)}
+                    Respondiendo a {quotedMessage.userName || 'Usuario'}
                   </div>
                   <div className="text-xs truncate" style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>
                     {quotedMessage.message || '[Mensaje sin texto]'}
@@ -2406,7 +2449,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
             <div className="space-y-3">
               <div>
                 <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Nombre</div>
-                <div className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>{highlightUlises(contactInfoModal.name || 'Sin nombre')}</div>
+                <div className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>{contactInfoModal.name || 'Sin nombre'}</div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Número</div>

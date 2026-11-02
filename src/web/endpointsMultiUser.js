@@ -11,6 +11,15 @@ const path = require('path');
 // Configurar multer para almacenamiento en memoria
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Normaliza un teléfono para WhatsApp. Para números de 10 dígitos (formato
+// local MX) prefija '521'. Para 11+ dígitos asume que ya trae lada país.
+function normalizeMxPhone(raw) {
+    const digits = String(raw || '').replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    if (digits.length === 10) return `521${digits}`;
+    return digits;
+}
+
 module.exports = function(app, requireAuth, requireAdmin) {
 
     // ===== ENDPOINTS DE GESTIÓN DE USUARIOS (SOLO ADMIN) =====
@@ -256,6 +265,27 @@ module.exports = function(app, requireAuth, requireAdmin) {
             );
             console.log(`[MC ${_reqId}] assignments=${assignments.length} in ${Date.now()-_t0}ms`);
 
+            // Precargar tags de todos los chats del usuario en una sola query y
+            // armar un index por chat_phone para pegarlos en la respuesta sin
+            // un fetch extra por chat.
+            const tagsByPhone = {};
+            if (assignments.length > 0) {
+                const phones = assignments.map((a) => a.client_phone);
+                const placeholders = phones.map(() => '?').join(',');
+                const tagRows = await database.query(
+                    `SELECT a.chat_phone, t.id, t.name, t.color
+                     FROM chat_tag_assignments a
+                     JOIN chat_tags t ON t.id = a.tag_id
+                     WHERE a.chat_phone IN (${placeholders})
+                     ORDER BY t.id`,
+                    phones
+                );
+                for (const r of tagRows) {
+                    (tagsByPhone[r.chat_phone] = tagsByPhone[r.chat_phone] || [])
+                        .push({ id: r.id, name: r.name, color: r.color });
+                }
+            }
+
             // Obtener logs para cada cliente asignado
             const logger = require('../services/logger');
             const humanModeManager = require('../services/humanModeManager');
@@ -308,6 +338,8 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         groupName: assignment.group_name,
                         groupPicture: assignment.group_picture,
                         isArchived: Boolean(assignment.is_archived),
+                        botLeftGroupAt: assignment.bot_left_group_at || null,
+                        tags: tagsByPhone[assignment.client_phone] || [],
                         messages: messages.reverse(), // DESC (más reciente primero) — el frontend reversea de nuevo
                         totalMessages: counts.total,
                         userMessages: counts.userMessages,
@@ -344,6 +376,59 @@ module.exports = function(app, requireAuth, requireAdmin) {
             res.json({ count: result[0]?.count || 0 });
         } catch (error) {
             res.status(500).json({ error: 'Error' });
+        }
+    });
+
+    // Paginación hacia atrás: mensajes anteriores a `before` (ISO timestamp).
+    app.get('/api/my-contacts/:phone/messages', requireAuth, async (req, res) => {
+        try {
+            const phone = req.params.phone;
+            const before = req.query.before;
+            const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+            if (!before) {
+                return res.status(400).json({ error: 'before es requerido (ISO timestamp)' });
+            }
+
+            // Validar que el contacto está asignado al usuario actual.
+            const assignment = await database.findOne(
+                'client_assignments',
+                'support_user_id = ? AND client_phone = ?',
+                [req.user.id, phone]
+            );
+            if (!assignment) {
+                return res.status(404).json({ error: 'Contacto no asignado al usuario' });
+            }
+
+            const logger = require('../services/logger');
+            const logs = await logger.getLogsByClientPhone(phone, limit, before);
+
+            const messages = logs.map(log => ({
+                type: log.type || log.role?.toUpperCase(),
+                message: log.message,
+                timestamp: log.timestamp,
+                role: log.role,
+                status: log.status,
+                messageId: log.messageId,
+                userName: log.userName,
+                participant: log.participant,
+                participantPic: log.participantPic || null,
+                hasMedia: log.hasMedia || false,
+                mediaType: log.mediaType,
+                mediaUrl: log.mediaUrl,
+                mediaMimetype: log.mediaMimetype,
+                mediaFilename: log.mediaFilename,
+                mediaCaption: log.mediaCaption,
+                isForwarded: log.isForwarded || false,
+                isEdited: log.isEdited || false,
+                hasQuotedMsg: log.hasQuotedMsg || false,
+                quotedMsg: log.quotedMsg || null
+            }));
+
+            res.json({ messages, hasMore: messages.length === limit });
+        } catch (error) {
+            console.error('Error obteniendo mensajes anteriores:', error);
+            res.status(500).json({ error: 'Error obteniendo mensajes' });
         }
     });
 
@@ -1279,6 +1364,214 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error eliminando suscripción push:', error);
             res.status(500).json({ error: 'Error eliminando suscripción' });
+        }
+    });
+
+    // ─── Etiquetas de personas Aloia ──────────────────────────────────
+    // Catálogo fijo seeded en migración 007. El PUT reemplaza el set completo
+    // de etiquetas de un chat con el array que llega — más simple que exponer
+    // add/remove por separado y el payload es chico.
+
+    app.get('/api/chat-tags', requireAuth, async (req, res) => {
+        try {
+            const tags = await database.query('SELECT id, name, color, phone FROM chat_tags ORDER BY id');
+            res.json(tags);
+        } catch (err) {
+            console.error('Error listando chat_tags:', err);
+            res.status(500).json({ error: 'Error listando etiquetas' });
+        }
+    });
+
+    // Debug temporal: inspecciona el formato real del sock.user.id y de los
+    // participantes de UN grupo para entender por qué el matching falla.
+    app.get('/api/chat-tags/debug-membership/:phone', requireAuth, async (req, res) => {
+        try {
+            const mgr = global.whatsappInstanceManager;
+            const instanceData = mgr.instances.get(req.user.id);
+            const sock = instanceData.sock;
+            const meta = await sock.groupMetadata(`${req.params.phone}@g.us`);
+            res.json({
+                botUser: sock.user,
+                subject: meta?.subject,
+                participantsCount: meta?.participants?.length,
+                participantsSample: (meta?.participants || []).slice(0, 6),
+            });
+        } catch (err) {
+            res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
+        }
+    });
+
+    // Backfill: para cada grupo, consulta a WhatsApp si el bot sigue siendo
+    // miembro. Modo dry-run por defecto (sólo reporta, no modifica DB) para
+    // evitar marcar en falso. Pasar ?commit=1 para persistir.
+    //
+    // Compara el ID del bot contra participants en varias formas (ID, LID,
+    // sólo dígitos) porque Baileys devuelve el JID de los participantes en
+    // formato variable según si el grupo usa LID o no.
+    app.post('/api/chat-tags/backfill-bot-membership', requireAuth, async (req, res) => {
+        try {
+            const mgr = global.whatsappInstanceManager;
+            if (!mgr) return res.status(500).json({ error: 'instance manager no disponible' });
+            const instanceData = mgr.instances.get(req.user.id);
+            if (!instanceData?.sock) return res.status(400).json({ error: 'instancia no conectada' });
+            const sock = instanceData.sock;
+            const commit = req.query.commit === '1' || req.body?.commit === true;
+
+            // IDs del bot en todas las variantes para hacer match robusto.
+            const botUser = sock.user || {};
+            const toDigits = (s) => String(s || '').split(':')[0].split('@')[0];
+            const botCandidates = new Set([
+                botUser.id, botUser.lid,
+                toDigits(botUser.id), toDigits(botUser.lid),
+            ].filter(Boolean));
+
+            const groups = await database.query(
+                `SELECT id, client_phone, group_name FROM client_assignments
+                 WHERE support_user_id = ? AND is_group = 1 AND bot_left_group_at IS NULL`,
+                [req.user.id]
+            );
+            const report = [];
+            let marked = 0;
+            for (const g of groups) {
+                const jid = `${g.client_phone}@g.us`;
+                try {
+                    const meta = await sock.groupMetadata(jid);
+                    const participants = meta?.participants || [];
+                    const stillIn = participants.some((p) => {
+                        const candidates = [p.id, p.lid, p.jid, p.phoneNumber,
+                            toDigits(p.id), toDigits(p.lid), toDigits(p.jid), toDigits(p.phoneNumber)]
+                            .filter(Boolean);
+                        return candidates.some((c) => botCandidates.has(c));
+                    });
+                    report.push({ group: g.group_name, participants: participants.length, stillIn });
+                    if (!stillIn && commit) {
+                        await database.query(
+                            'UPDATE client_assignments SET bot_left_group_at = NOW() WHERE id = ?',
+                            [g.id]
+                        );
+                        marked++;
+                    }
+                } catch (e) {
+                    const msg = e?.message || String(e);
+                    report.push({ group: g.group_name, error: msg });
+                    // En error NO marcamos — podría ser transitorio.
+                }
+            }
+            res.json({
+                commit,
+                botCandidates: [...botCandidates],
+                scanned: groups.length,
+                markedIfCommit: report.filter(r => r.stillIn === false).length,
+                marked,
+                report,
+            });
+        } catch (err) {
+            console.error('Error backfill bot membership:', err);
+            res.status(500).json({ error: err.message || 'Error en backfill' });
+        }
+    });
+
+    // Dispara un aviso de prueba al teléfono registrado de una persona.
+    // Reutiliza instanceManager.sendMessage para pasar por el mismo sock del bot.
+    app.post('/api/chat-tags/:id/test-notify', requireAuth, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            const rows = await database.query('SELECT id, name, phone FROM chat_tags WHERE id = ?', [id]);
+            const tag = rows[0];
+            if (!tag) return res.status(404).json({ error: 'Etiqueta no encontrada' });
+            const digits = normalizeMxPhone(tag.phone);
+            if (!digits) return res.status(400).json({ error: 'Esta persona no tiene teléfono registrado' });
+            const jid = `${digits}@s.whatsapp.net`;
+            const body = `🔔 *Aviso de prueba Aloia*\nHola ${tag.name}, este es un mensaje de prueba desde la plataforma de soporte. Si lo recibes, las notificaciones automáticas al asignarte un chat ya están funcionando correctamente.`;
+            const mgr = global.whatsappInstanceManager;
+            if (!mgr) return res.status(500).json({ error: 'instance manager no disponible' });
+            await mgr.sendMessage(req.user.id, jid, body);
+            res.json({ ok: true, sentTo: jid });
+        } catch (err) {
+            console.error('Error en test-notify:', err);
+            res.status(500).json({ error: err.message || 'Error enviando prueba' });
+        }
+    });
+
+    // Actualiza el teléfono WhatsApp personal de una persona del catálogo.
+    // Se usa para que el bot le reenvíe notificaciones cuando llega un mensaje
+    // a un chat etiquetado con esa persona (ver whatsappInstanceManager).
+    app.put('/api/chat-tags/:id', requireAuth, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
+            // Dejamos sólo dígitos; el usuario puede escribir con +, espacios o guiones.
+            const raw = String(req.body?.phone ?? '').trim();
+            const phone = raw ? raw.replace(/[^0-9]/g, '') : null;
+            if (phone && (phone.length < 8 || phone.length > 20)) {
+                return res.status(400).json({ error: 'Teléfono inválido (sólo dígitos, 8–20)' });
+            }
+            await database.query('UPDATE chat_tags SET phone = ? WHERE id = ?', [phone, id]);
+            const rows = await database.query('SELECT id, name, color, phone FROM chat_tags WHERE id = ?', [id]);
+            res.json(rows[0] || null);
+        } catch (err) {
+            console.error('Error actualizando teléfono de etiqueta:', err);
+            res.status(500).json({ error: 'Error actualizando teléfono' });
+        }
+    });
+
+    app.get('/api/chat-tag-assignments/:phone', requireAuth, async (req, res) => {
+        try {
+            const rows = await database.query(
+                'SELECT t.id, t.name, t.color FROM chat_tag_assignments a JOIN chat_tags t ON t.id = a.tag_id WHERE a.chat_phone = ? ORDER BY t.id',
+                [req.params.phone]
+            );
+            res.json(rows);
+        } catch (err) {
+            console.error('Error leyendo tags del chat:', err);
+            res.status(500).json({ error: 'Error leyendo etiquetas' });
+        }
+    });
+
+    app.put('/api/chat-tag-assignments/:phone', requireAuth, async (req, res) => {
+        try {
+            const phone = req.params.phone;
+            const incoming = Array.isArray(req.body?.tagIds) ? req.body.tagIds : [];
+            const tagIds = [...new Set(incoming.map((n) => parseInt(n, 10)).filter(Boolean))];
+            await database.query('DELETE FROM chat_tag_assignments WHERE chat_phone = ?', [phone]);
+            for (const tagId of tagIds) {
+                await database.query(
+                    'INSERT INTO chat_tag_assignments (chat_phone, tag_id, assigned_by) VALUES (?, ?, ?)',
+                    [phone, tagId, req.user?.id || null]
+                );
+            }
+            // Si quedaron etiquetas y el chat estaba archivado, lo rescatamos a
+            // la bandeja principal — para que el responsable lo vea de inmediato.
+            // Si quitan todas las etiquetas, NO lo re-archivamos (no destructivo).
+            let unarchived = false;
+            if (tagIds.length > 0) {
+                const assignment = await database.query(
+                    'SELECT id, is_archived FROM client_assignments WHERE client_phone = ? LIMIT 1',
+                    [phone]
+                );
+                if (assignment[0]?.is_archived) {
+                    await database.query(
+                        'UPDATE client_assignments SET is_archived = 0 WHERE client_phone = ?',
+                        [phone]
+                    );
+                    unarchived = true;
+                }
+            }
+            // Dispara refresh de la lista en todos los clientes. ContactsList
+            // ya escucha 'new-message' y vuelve a cargar la lista; reutilizamos
+            // ese canal para no agregar un evento nuevo que el frontend tendría
+            // que suscribir aparte.
+            if (global.io) {
+                global.io.emit('new-message', { phone, reason: 'tags-updated' });
+            }
+            const rows = await database.query(
+                'SELECT t.id, t.name, t.color FROM chat_tag_assignments a JOIN chat_tags t ON t.id = a.tag_id WHERE a.chat_phone = ? ORDER BY t.id',
+                [phone]
+            );
+            res.json({ tags: rows, unarchived });
+        } catch (err) {
+            console.error('Error guardando tags del chat:', err);
+            res.status(500).json({ error: 'Error guardando etiquetas' });
         }
     });
 };
