@@ -1322,8 +1322,32 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
             }}>
-              {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+              </span>
+              {(contact.projectSlug || chatProjectSlug) && (
+                <span
+                  title={`Proyecto en documentación: ${contact.projectSlug || chatProjectSlug}`}
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: '0.3px',
+                    textTransform: 'uppercase',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: 'rgba(0,161,156,0.12)',
+                    color: '#00A19C',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {contact.projectSlug || chatProjectSlug}
+                </span>
+              )}
             </div>
             <div style={{
               fontFamily: 'Sora, sans-serif',

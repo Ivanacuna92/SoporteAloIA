@@ -663,11 +663,25 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
                 {/* Info del contacto */}
                 <div className="flex-1 min-w-0 overflow-hidden">
                   <div className="flex items-center justify-between mb-0.5 gap-2">
-                    <span className="text-sm truncate flex-1" style={{
+                    <span className="text-sm truncate flex-1 flex items-center gap-1.5 min-w-0" style={{
                       color: contact.leftGroup ? 'var(--text-tertiary)' : 'var(--text-primary)',
                       fontWeight: contact.leftGroup ? 400 : getUnreadCount(contact) > 0 ? 700 : 600
                     }}>
-                      {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+                      <span className="truncate">
+                        {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+                      </span>
+                      {contact.projectSlug && (
+                        <span
+                          title={`Proyecto en documentación: ${contact.projectSlug}`}
+                          className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap"
+                          style={{
+                            background: 'rgba(0,161,156,0.12)',
+                            color: '#00A19C',
+                          }}
+                        >
+                          {contact.projectSlug}
+                        </span>
+                      )}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {contact.leftGroup ? (

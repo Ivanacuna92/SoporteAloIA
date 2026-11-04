@@ -271,6 +271,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
             // armar un index por chat_phone para pegarlos en la respuesta sin
             // un fetch extra por chat.
             const tagsByPhone = {};
+            const projectByPhone = {};
             if (assignments.length > 0) {
                 const phones = assignments.map((a) => a.client_phone);
                 const placeholders = phones.map(() => '?').join(',');
@@ -286,6 +287,16 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     (tagsByPhone[r.chat_phone] = tagsByPhone[r.chat_phone] || [])
                         .push({ id: r.id, name: r.name, color: r.color });
                 }
+                // Links a proyectos de documentacion-aloia (una sola query)
+                try {
+                    const linkRows = await database.query(
+                        `SELECT chat_phone, project_slug FROM chat_project_links WHERE chat_phone IN (${placeholders})`,
+                        phones
+                    );
+                    for (const r of linkRows) {
+                        projectByPhone[r.chat_phone] = r.project_slug;
+                    }
+                } catch {}
             }
 
             // Obtener logs para cada cliente asignado
@@ -342,6 +353,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         isArchived: Boolean(assignment.is_archived),
                         botLeftGroupAt: assignment.bot_left_group_at || null,
                         tags: tagsByPhone[assignment.client_phone] || [],
+                        projectSlug: projectByPhone[assignment.client_phone] || null,
                         messages: messages.reverse(), // DESC (más reciente primero) — el frontend reversea de nuevo
                         totalMessages: counts.total,
                         userMessages: counts.userMessages,
