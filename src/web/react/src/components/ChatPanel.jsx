@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -359,6 +359,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [editingParticipantId, setEditingParticipantId] = useState(null);
   const [editingParticipantValue, setEditingParticipantValue] = useState('');
   const [savingParticipant, setSavingParticipant] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiCountdown, setAiCountdown] = useState(0);
+  const [aiBusy, setAiBusy] = useState(false);
   const saveParticipantName = async (participantJid) => {
     if (savingParticipant || !contact?.phone) return;
     setSavingParticipant(true);
@@ -673,6 +676,57 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     } catch (e) {}
     return () => { if (socket) socket.disconnect(); };
   }, [contact?.phone]);
+
+  // === Sugerencias IA: fetch inicial + suscripción socket ===
+  useEffect(() => {
+    if (!contact?.phone) { setAiSuggestion(null); return; }
+    let cancelled = false;
+    getPendingSuggestion(contact.phone).then(s => { if (!cancelled) setAiSuggestion(s || null); }).catch(() => {});
+    let socket;
+    try {
+      socket = socketIO({ reconnection: true, transports: ['polling'] });
+      socket.on('ai-suggestion:new', (data) => {
+        if (data.chatPhone === contact.phone) setAiSuggestion(data.suggestion);
+      });
+      socket.on('ai-suggestion:resolved', (data) => {
+        if (data.chatPhone === contact.phone) setAiSuggestion(prev => (prev && prev.id === data.id ? null : prev));
+      });
+    } catch {}
+    return () => { cancelled = true; if (socket) socket.disconnect(); };
+  }, [contact?.phone]);
+
+  // Countdown tick 1s
+  useEffect(() => {
+    if (!aiSuggestion?.expiresAt) { setAiCountdown(0); return; }
+    const tick = () => {
+      const remain = Math.max(0, Math.floor((new Date(aiSuggestion.expiresAt).getTime() - Date.now()) / 1000));
+      setAiCountdown(remain);
+      if (remain === 0) setAiSuggestion(null);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [aiSuggestion?.id, aiSuggestion?.expiresAt]);
+
+  const handleSendSuggestion = async (choice) => {
+    if (!aiSuggestion || aiBusy) return;
+    setAiBusy(true);
+    try {
+      await sendSuggestionOption(aiSuggestion.id, choice);
+      setAiSuggestion(null);
+    } catch (e) { console.error(e); }
+    finally { setAiBusy(false); }
+  };
+  const handleDismissSuggestion = async () => {
+    if (!aiSuggestion || aiBusy) return;
+    setAiBusy(true);
+    try {
+      await dismissSuggestion(aiSuggestion.id);
+      setAiSuggestion(null);
+    } catch (e) { console.error(e); }
+    finally { setAiBusy(false); }
+  };
+  const aiFmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   useEffect(() => {
     // Scroll suave cuando llegan nuevos mensajes.
@@ -2079,6 +2133,62 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Sugerencias IA (2 opciones + countdown) */}
+          {aiSuggestion && (
+            <div className="mx-2 md:mx-4 mb-2 p-3 rounded-xl" style={{
+              background: isDarkMode ? 'rgba(14, 165, 164, 0.08)' : 'rgba(0, 161, 156, 0.06)',
+              border: `1px solid ${isDarkMode ? 'rgba(14, 165, 164, 0.3)' : 'rgba(0, 161, 156, 0.25)'}`,
+            }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#00A19C' }}>
+                    Sugerencias IA
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono" style={{
+                    background: aiCountdown < 60 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(0, 161, 156, 0.15)',
+                    color: aiCountdown < 60 ? '#dc2626' : '#00A19C',
+                  }}>
+                    auto en {aiFmt(aiCountdown)}
+                  </span>
+                </div>
+                <button
+                  onClick={handleDismissSuggestion}
+                  disabled={aiBusy}
+                  title="Descartar sugerencias"
+                  className="w-6 h-6 rounded-full flex items-center justify-center transition-all hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-40"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[1, 2].map((n) => {
+                  const text = n === 1 ? aiSuggestion.option1 : aiSuggestion.option2;
+                  if (!text) return null;
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => handleSendSuggestion(n)}
+                      disabled={aiBusy}
+                      className="text-left p-2.5 rounded-lg text-sm transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-40 disabled:hover:scale-100"
+                      style={{
+                        background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff',
+                        border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}`,
+                        color: 'var(--text-primary)',
+                        boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
+                      }}
+                    >
+                      <div className="text-[10px] font-semibold mb-1" style={{ color: '#00A19C' }}>Opción {n}</div>
+                      <div className="whitespace-pre-wrap leading-snug">{text}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

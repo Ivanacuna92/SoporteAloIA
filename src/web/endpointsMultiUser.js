@@ -4,6 +4,7 @@
 const authService = require('../services/authService');
 const database = require('../services/database');
 const pushService = require('../services/pushService');
+const aiSuggestionService = require('../services/aiSuggestionService');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -1133,6 +1134,46 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error obteniendo participantes del grupo:', error);
             res.status(500).json({ error: 'Error obteniendo participantes', details: error.message });
+        }
+    });
+
+    // ===== ENDPOINTS DE SUGERENCIAS IA =====
+
+    // Pending de un chat (si existe)
+    app.get('/api/my-instance/ai-suggestions/:chatPhone', requireAuth, async (req, res) => {
+        try {
+            const pending = await aiSuggestionService.getPendingForChat(req.params.chatPhone);
+            res.json(pending ? {
+                id: pending.id,
+                option1: pending.option1,
+                option2: pending.option2,
+                expiresAt: pending.expires_at,
+                triggerMessageId: pending.trigger_message_id,
+                createdAt: pending.created_at
+            } : null);
+        } catch (e) {
+            res.status(500).json({ error: 'Error obteniendo sugerencia', details: e.message });
+        }
+    });
+
+    // Enviar la opcion elegida (1 o 2)
+    app.post('/api/my-instance/ai-suggestions/:id/send', requireAuth, async (req, res) => {
+        try {
+            const choice = req.body?.choice === 2 ? 2 : 1;
+            const result = await aiSuggestionService.sendOption(parseInt(req.params.id, 10), choice);
+            res.json(result);
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    // Descartar
+    app.post('/api/my-instance/ai-suggestions/:id/dismiss', requireAuth, async (req, res) => {
+        try {
+            const result = await aiSuggestionService.dismiss(parseInt(req.params.id, 10));
+            res.json(result);
+        } catch (e) {
+            res.status(400).json({ error: e.message });
         }
     });
 

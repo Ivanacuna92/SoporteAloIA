@@ -12,6 +12,7 @@ const humanModeManager = require('./humanModeManager');
 const followUpService = require('./followUpService');
 const systemConfigService = require('./systemConfigService');
 const pushService = require('./pushService');
+const aiSuggestionService = require('./aiSuggestionService');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -668,6 +669,9 @@ class WhatsAppInstanceManager {
                 // Registrar mensaje como enviado por soporte
                 await logger.log('soporte', conversation || '', groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, null, quotedMsgInfo);
 
+                // Cualquier mensaje saliente cancela sugerencias IA pendientes del chat
+                try { await aiSuggestionService.cancelPending(groupId, 'cancelled'); } catch (e) { console.log('[ai-suggestions] cancel-fromMe falló:', e.message); }
+
                 // Emitir evento en tiempo real
                 if (global.io) {
                     global.io.emit('new-message', { phone: groupId, userName, message: conversation || '' });
@@ -977,6 +981,17 @@ class WhatsAppInstanceManager {
             const messageId = msg.key.id;
             const participant = msg.key.participant || null;
             await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant, quotedMsgInfo);
+
+            // Disparar sugerencias IA (async, no bloquea el handler)
+            if (messageText && messageText.trim()) {
+                aiSuggestionService.generateSuggestions({
+                    supportUserId,
+                    chatPhone: groupId,
+                    triggerMessageId: messageId,
+                    participantJid: participant,
+                    messageText
+                }).catch(err => console.error('[ai-suggestions] generate fail:', err.message));
+            }
 
             // Emitir evento en tiempo real via WebSocket
             if (global.io) {

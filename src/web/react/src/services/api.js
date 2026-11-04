@@ -840,6 +840,31 @@ export async function setParticipantCustomName(groupId, participantJid, customNa
   return response.json();
 }
 
+// ===== IA Suggestions =====
+export async function getPendingSuggestion(chatPhone) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/ai-suggestions/${chatPhone}`);
+  if (!response.ok) return null;
+  return response.json();
+}
+export async function sendSuggestionOption(id, choice) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/ai-suggestions/${id}/send`, {
+    method: 'POST',
+    body: JSON.stringify({ choice })
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Error enviando sugerencia');
+  }
+  return response.json();
+}
+export async function dismissSuggestion(id) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/ai-suggestions/${id}/dismiss`, {
+    method: 'POST'
+  });
+  if (!response.ok) throw new Error('Error descartando sugerencia');
+  return response.json();
+}
+
 // Obtener receipts de un mensaje
 export async function getMessageReceipts(messageId) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/message-receipts/${messageId}`);
