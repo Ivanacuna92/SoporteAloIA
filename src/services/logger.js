@@ -422,6 +422,117 @@ class Logger {
         }
     }
 
+    /**
+     * Batch version de getMessageCountsByClientPhone — una sola query para
+     * N chats. Reduce 58 round-trips a 1 cuando el endpoint /my-contacts se
+     * carga.
+     * Retorna { phone: { total, userMessages, botMessages } }.
+     */
+    async getMessageCountsBatch(clientPhones) {
+        if (!clientPhones || clientPhones.length === 0) return {};
+        try {
+            const placeholders = clientPhones.map(() => '?').join(',');
+            const rows = await database.query(
+                `SELECT
+                    user_id AS phone,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN role = 'cliente' THEN 1 ELSE 0 END) AS userMessages,
+                    SUM(CASE WHEN role = 'bot' THEN 1 ELSE 0 END) AS botMessages
+                 FROM conversation_logs
+                 WHERE user_id IN (${placeholders})
+                 GROUP BY user_id`,
+                clientPhones
+            );
+            const map = {};
+            for (const r of rows) {
+                map[r.phone] = {
+                    total: Number(r.total) || 0,
+                    userMessages: Number(r.userMessages) || 0,
+                    botMessages: Number(r.botMessages) || 0
+                };
+            }
+            for (const p of clientPhones) {
+                if (!map[p]) map[p] = { total: 0, userMessages: 0, botMessages: 0 };
+            }
+            return map;
+        } catch (error) {
+            console.error('Error en getMessageCountsBatch:', error);
+            return {};
+        }
+    }
+
+    /**
+     * Batch: trae los últimos N mensajes de cada chat en una sola query
+     * usando ROW_NUMBER(). Incluye participant_profiles JOIN.
+     */
+    async getRecentLogsBatch(clientPhones, limitPerChat = 50) {
+        if (!clientPhones || clientPhones.length === 0) return {};
+        await this._ensureProfileTable();
+        try {
+            const placeholders = clientPhones.map(() => '?').join(',');
+            const columns = `
+                cl.user_id AS chat_phone,
+                cl.timestamp, cl.role, cl.user_id, cl.user_name, cl.is_group,
+                cl.message, cl.message_id, cl.status, cl.response, cl.support_user_id,
+                cl.participant,
+                cl.has_media, cl.media_type, cl.media_url, cl.media_mimetype,
+                cl.media_filename, cl.media_caption,
+                cl.is_forwarded, cl.is_edited,
+                cl.has_quoted_msg, cl.quoted_msg_body, cl.quoted_msg_participant, cl.quoted_msg_id,
+                pp.profile_picture AS participant_pic`;
+            // MariaDB/MySQL 8+ soporta window functions. Fallback: limit a nivel app.
+            const sql = `
+                SELECT ${columns}
+                FROM (
+                    SELECT cl.*, ROW_NUMBER() OVER (PARTITION BY cl.user_id ORDER BY cl.timestamp DESC, cl.id DESC) AS rn
+                    FROM conversation_logs cl
+                    WHERE cl.user_id IN (${placeholders})
+                ) cl
+                LEFT JOIN participant_profiles pp ON cl.participant = pp.jid
+                WHERE cl.rn <= ?
+                ORDER BY cl.user_id, cl.timestamp ASC`;
+            const rows = await database.query(sql, [...clientPhones, limitPerChat]);
+            const map = {};
+            for (const log of rows) {
+                const phone = log.chat_phone;
+                if (!map[phone]) map[phone] = [];
+                map[phone].push({
+                    timestamp: log.timestamp.toISOString(),
+                    type: log.role === 'cliente' ? 'USER' : log.role === 'bot' ? 'BOT' : log.role === 'soporte' ? 'HUMAN' : log.role?.toUpperCase(),
+                    role: log.role,
+                    userId: log.user_id,
+                    userName: log.user_name,
+                    isGroup: log.is_group || false,
+                    message: log.message,
+                    messageId: log.message_id,
+                    status: log.status,
+                    response: log.response,
+                    supportUserId: log.support_user_id,
+                    participant: log.participant,
+                    participantPic: AVATAR_OVERRIDES[log.participant] || log.participant_pic || null,
+                    hasMedia: log.has_media || false,
+                    mediaType: log.media_type,
+                    mediaUrl: log.media_url,
+                    mediaMimetype: log.media_mimetype,
+                    mediaFilename: log.media_filename,
+                    mediaCaption: log.media_caption,
+                    isForwarded: log.is_forwarded || false,
+                    isEdited: log.is_edited || false,
+                    hasQuotedMsg: log.has_quoted_msg || false,
+                    quotedMsg: log.has_quoted_msg ? {
+                        body: log.quoted_msg_body,
+                        participant: log.quoted_msg_participant,
+                        messageId: log.quoted_msg_id
+                    } : null
+                });
+            }
+            return map;
+        } catch (error) {
+            console.error('Error en getRecentLogsBatch:', error);
+            return {};
+        }
+    }
+
 }
 
 module.exports = new Logger();

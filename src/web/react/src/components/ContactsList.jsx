@@ -80,7 +80,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
     loadingRef._ts = Date.now();
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const data = await getMyContacts(controller.signal);
       clearTimeout(timeout);
 

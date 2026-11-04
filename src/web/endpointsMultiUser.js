@@ -299,78 +299,80 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 } catch {}
             }
 
-            // Obtener logs para cada cliente asignado
+            // Obtener logs para cada cliente asignado — BATCH en 3 queries totales
+            // (antes eran 58*3 queries serializadas por chat).
             const logger = require('../services/logger');
             const humanModeManager = require('../services/humanModeManager');
 
-            // Límite de mensajes por contacto para acelerar la lista.
-            // ChatPanel muestra INITIAL_MESSAGES=50 al abrir un chat.
             const CONTACT_LIST_MSG_LIMIT = 50;
+            const allPhones = assignments.map(a => a.client_phone);
 
-            const contacts = await Promise.all(
-                assignments.map(async (assignment) => {
-                    const [logs, counts, rawMode] = await Promise.all([
-                        logger.getLogsByClientPhone(assignment.client_phone, CONTACT_LIST_MSG_LIMIT),
-                        logger.getMessageCountsByClientPhone(assignment.client_phone),
-                        humanModeManager.getMode(assignment.client_phone)
-                    ]);
+            const [logsByPhone, countsByPhone, allModes] = await Promise.all([
+                logger.getRecentLogsBatch(allPhones, CONTACT_LIST_MSG_LIMIT),
+                logger.getMessageCountsBatch(allPhones),
+                humanModeManager.getAllHumanStates()
+            ]);
+            console.log(`[MC ${_reqId}] batch loaded in ${Date.now()-_t0}ms`);
 
-                    // Agrupar mensajes (solo los últimos CONTACT_LIST_MSG_LIMIT)
-                    const messages = logs.map(log => ({
-                        type: log.type || log.role?.toUpperCase(),
-                        message: log.message,
-                        timestamp: log.timestamp,
-                        role: log.role,
-                        status: log.status,
-                        messageId: log.messageId,
-                        userName: log.userName,
-                        participant: log.participant,
-                        participantPic: log.participantPic || null,
-                        hasMedia: log.hasMedia || false,
-                        mediaType: log.mediaType,
-                        mediaUrl: log.mediaUrl,
-                        mediaMimetype: log.mediaMimetype,
-                        mediaFilename: log.mediaFilename,
-                        mediaCaption: log.mediaCaption,
-                        isForwarded: log.isForwarded || false,
-                        isEdited: log.isEdited || false,
-                        hasQuotedMsg: log.hasQuotedMsg || false,
-                        quotedMsg: log.quotedMsg || null
-                    }));
+            const contacts = assignments.map((assignment) => {
+                const logs = logsByPhone[assignment.client_phone] || [];
+                const counts = countsByPhone[assignment.client_phone] || { total: 0, userMessages: 0, botMessages: 0 };
+                const rawMode = allModes[assignment.client_phone];
 
-                    const mode = rawMode === 'support' ? 'support' : 'human';
-                    const isHumanMode = mode === 'human';
+                const messages = logs.map(log => ({
+                    type: log.type || log.role?.toUpperCase(),
+                    message: log.message,
+                    timestamp: log.timestamp,
+                    role: log.role,
+                    status: log.status,
+                    messageId: log.messageId,
+                    userName: log.userName,
+                    participant: log.participant,
+                    participantPic: log.participantPic || null,
+                    hasMedia: log.hasMedia || false,
+                    mediaType: log.mediaType,
+                    mediaUrl: log.mediaUrl,
+                    mediaMimetype: log.mediaMimetype,
+                    mediaFilename: log.mediaFilename,
+                    mediaCaption: log.mediaCaption,
+                    isForwarded: log.isForwarded || false,
+                    isEdited: log.isEdited || false,
+                    hasQuotedMsg: log.hasQuotedMsg || false,
+                    quotedMsg: log.quotedMsg || null
+                }));
 
-                    // messages viene en ASC → el último elemento es el más reciente
-                    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+                const mode = rawMode === 'support' ? 'support' : 'human';
+                const isHumanMode = mode === 'human';
 
-                    return {
-                        phone: assignment.client_phone,
-                        name: assignment.group_name || assignment.client_phone,
-                        isGroup: assignment.is_group || false,
-                        groupName: assignment.group_name,
-                        groupPicture: assignment.group_picture,
-                        isArchived: Boolean(assignment.is_archived),
-                        botLeftGroupAt: assignment.bot_left_group_at || null,
-                        tags: tagsByPhone[assignment.client_phone] || [],
-                        projectSlugs: projectByPhone[assignment.client_phone] || [],
-                        messages: messages.reverse(), // DESC (más reciente primero) — el frontend reversea de nuevo
-                        totalMessages: counts.total,
-                        userMessages: counts.userMessages,
-                        botMessages: counts.botMessages,
-                        lastActivity: assignment.last_message_at,
-                        isHumanMode,
-                        mode,
-                        lastMessage: lastMsg ? {
-                            text: lastMsg.message,
-                            timestamp: lastMsg.timestamp,
-                            userName: lastMsg.userName,
-                            role: lastMsg.role,
-                            mediaType: lastMsg.mediaType || null
-                        } : null
-                    };
-                })
-            );
+                // messages viene en ASC → el último elemento es el más reciente
+                const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+
+                return {
+                    phone: assignment.client_phone,
+                    name: assignment.group_name || assignment.client_phone,
+                    isGroup: assignment.is_group || false,
+                    groupName: assignment.group_name,
+                    groupPicture: assignment.group_picture,
+                    isArchived: Boolean(assignment.is_archived),
+                    botLeftGroupAt: assignment.bot_left_group_at || null,
+                    tags: tagsByPhone[assignment.client_phone] || [],
+                    projectSlugs: projectByPhone[assignment.client_phone] || [],
+                    messages: messages.reverse(), // DESC (más reciente primero) — el frontend reversea de nuevo
+                    totalMessages: counts.total,
+                    userMessages: counts.userMessages,
+                    botMessages: counts.botMessages,
+                    lastActivity: assignment.last_message_at,
+                    isHumanMode,
+                    mode,
+                    lastMessage: lastMsg ? {
+                        text: lastMsg.message,
+                        timestamp: lastMsg.timestamp,
+                        userName: lastMsg.userName,
+                        role: lastMsg.role,
+                        mediaType: lastMsg.mediaType || null
+                    } : null
+                };
+            });
 
             console.log(`[MC ${_reqId}] DONE contacts=${contacts.length} total=${Date.now()-_t0}ms`);
             res.json(contacts);
