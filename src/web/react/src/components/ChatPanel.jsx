@@ -1780,12 +1780,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{msg.mediaFilename || 'Documento'}</p>
                               <a
-                                href={msg.mediaUrl}
-                                download={msg.mediaFilename}
+                                href={msg.mediaUrl + (msg.mediaUrl.includes('?') ? '&' : '?') + 'id=' + (msg.messageId || msg.id || index)}
+                                download={msg.mediaFilename || true}
                                 className="text-xs font-medium hover:opacity-80"
                                 style={{ color: style.color }}
-                                target="_blank"
-                                rel="noopener noreferrer"
                               >
                                 Descargar
                               </a>

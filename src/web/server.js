@@ -75,7 +75,16 @@ self.addEventListener('fetch', function() {});
         });
 
         // Servir archivos de medios (imágenes, videos, etc.)
-        this.app.use('/media', express.static(path.join(__dirname, '../../data/media')));
+        // Para documentos forzamos Content-Disposition: attachment para que el
+        // navegador los descargue en lugar de previsualizarlos (xlsx, pdf, zip...).
+        this.app.use('/media', express.static(path.join(__dirname, '../../data/media'), {
+            setHeaders: (res, filePath) => {
+                if (filePath.includes(`${path.sep}documents${path.sep}`)) {
+                    const fname = path.basename(filePath);
+                    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`);
+                }
+            }
+        }));
 
         // En producción, servir archivos estáticos de React build
         if (process.env.NODE_ENV === 'production') {
