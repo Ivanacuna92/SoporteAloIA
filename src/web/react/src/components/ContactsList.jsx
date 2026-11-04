@@ -670,16 +670,18 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact,
                       <span className="truncate">
                         {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
                       </span>
-                      {contact.projectSlug && (
+                      {contact.projectSlugs && contact.projectSlugs.length > 0 && (
                         <span
-                          title={`Proyecto en documentación: ${contact.projectSlug}`}
+                          title={`Proyectos: ${contact.projectSlugs.join(', ')}`}
                           className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap"
                           style={{
                             background: 'rgba(0,161,156,0.12)',
                             color: '#00A19C',
                           }}
                         >
-                          {contact.projectSlug}
+                          {contact.projectSlugs.length === 1
+                            ? contact.projectSlugs[0]
+                            : `${contact.projectSlugs[0]} +${contact.projectSlugs.length - 1}`}
                         </span>
                       )}
                     </span>

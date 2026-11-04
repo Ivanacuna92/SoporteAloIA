@@ -871,20 +871,28 @@ export async function listDocProjects() {
   if (!response.ok) return [];
   return response.json();
 }
-export async function getChatProjectLink(chatPhone) {
+export async function getChatProjectLinks(chatPhone) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/chat-project/${chatPhone}`);
-  if (!response.ok) return null;
+  if (!response.ok) return { projectSlugs: [] };
   return response.json();
 }
-export async function setChatProjectLink(chatPhone, projectSlug) {
-  const response = await fetchWithCredentials(`${API_BASE}/my-instance/chat-project`, {
+export async function addChatProject(chatPhone, projectSlug) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/chat-project/add`, {
     method: 'POST',
     body: JSON.stringify({ chatPhone, projectSlug })
   });
   if (!response.ok) {
     const err = await response.json();
-    throw new Error(err.error || 'Error guardando link');
+    throw new Error(err.error || 'Error agregando proyecto');
   }
+  return response.json();
+}
+export async function removeChatProject(chatPhone, projectSlug) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/chat-project/remove`, {
+    method: 'POST',
+    body: JSON.stringify({ chatPhone, projectSlug })
+  });
+  if (!response.ok) throw new Error('Error quitando proyecto');
   return response.json();
 }
 

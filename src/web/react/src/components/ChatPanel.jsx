@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion, listDocProjects, getChatProjectLink, setChatProjectLink, getChatAiSettings, setChatAiEnabled as setChatAiEnabled_api } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion, listDocProjects, getChatProjectLinks, addChatProject, removeChatProject, getChatAiSettings, setChatAiEnabled as setChatAiEnabled_api } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -363,7 +363,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [aiCountdown, setAiCountdown] = useState(0);
   const [aiBusy, setAiBusy] = useState(false);
   const [docProjects, setDocProjects] = useState([]);
-  const [chatProjectSlug, setChatProjectSlug] = useState(null);
+  const [chatProjectSlugs, setChatProjectSlugs] = useState([]);
   const [savingChatProject, setSavingChatProject] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
@@ -741,10 +741,10 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     listDocProjects().then(setDocProjects).catch(() => setDocProjects([]));
   }, []);
 
-  // Cargar link actual del chat
+  // Cargar links actuales del chat
   useEffect(() => {
-    if (!contact?.phone || !contact?.isGroup) { setChatProjectSlug(null); return; }
-    getChatProjectLink(contact.phone).then(link => setChatProjectSlug(link?.projectSlug || null)).catch(() => setChatProjectSlug(null));
+    if (!contact?.phone || !contact?.isGroup) { setChatProjectSlugs([]); return; }
+    getChatProjectLinks(contact.phone).then(r => setChatProjectSlugs(r?.projectSlugs || [])).catch(() => setChatProjectSlugs([]));
     getChatAiSettings(contact.phone).then(s => setChatAiEnabled(s?.aiEnabled !== false)).catch(() => setChatAiEnabled(true));
   }, [contact?.phone, contact?.isGroup]);
 
@@ -763,12 +763,25 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     }
   };
 
-  const handleChangeChatProject = async (newSlug) => {
+  const handleAddProject = async (slug) => {
+    if (!contact?.phone || savingChatProject || !slug) return;
+    if (chatProjectSlugs.includes(slug)) return;
+    setSavingChatProject(true);
+    try {
+      const res = await addChatProject(contact.phone, slug);
+      setChatProjectSlugs(res?.projectSlugs || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingChatProject(false);
+    }
+  };
+  const handleRemoveProject = async (slug) => {
     if (!contact?.phone || savingChatProject) return;
     setSavingChatProject(true);
     try {
-      await setChatProjectLink(contact.phone, newSlug || null);
-      setChatProjectSlug(newSlug || null);
+      const res = await removeChatProject(contact.phone, slug);
+      setChatProjectSlugs(res?.projectSlugs || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -1329,25 +1342,29 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
               </span>
-              {(contact.projectSlug || chatProjectSlug) && (
-                <span
-                  title={`Proyecto en documentación: ${contact.projectSlug || chatProjectSlug}`}
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: '0.3px',
-                    textTransform: 'uppercase',
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    background: 'rgba(0,161,156,0.12)',
-                    color: '#00A19C',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                >
-                  {contact.projectSlug || chatProjectSlug}
-                </span>
-              )}
+              {(() => {
+                const slugs = (contact.projectSlugs && contact.projectSlugs.length ? contact.projectSlugs : chatProjectSlugs) || [];
+                if (!slugs.length) return null;
+                return (
+                  <span
+                    title={`Proyectos en documentación: ${slugs.join(', ')}`}
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.3px',
+                      textTransform: 'uppercase',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(0,161,156,0.12)',
+                      color: '#00A19C',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {slugs.length === 1 ? slugs[0] : `${slugs[0]} +${slugs.length - 1}`}
+                  </span>
+                );
+              })()}
             </div>
             <div style={{
               fontFamily: 'Sora, sans-serif',
@@ -2726,29 +2743,55 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               )}
               {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (() => {
                 const query = projectSearch.trim().toLowerCase();
-                const filtered = query
+                const filtered = (query
                   ? docProjects.filter(p => p.slug.toLowerCase().includes(query) || (p.company || '').toLowerCase().includes(query))
-                  : docProjects;
-                const currentProject = docProjects.find(p => p.slug === chatProjectSlug);
-                const currentLabel = currentProject
-                  ? (currentProject.company ? `${currentProject.slug} · ${currentProject.company}` : currentProject.slug)
-                  : (chatProjectSlug || '');
+                  : docProjects
+                ).filter(p => !chatProjectSlugs.includes(p.slug));
                 const pickProject = async (slug) => {
-                  setProjectDropdownOpen(false);
                   setProjectSearch('');
-                  await handleChangeChatProject(slug);
+                  setProjectHighlight(0);
+                  await handleAddProject(slug);
+                  // Dejar abierto para que pueda añadir más de un jalón
                 };
                 return (
                   <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
                     <div className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                      Proyecto en Documentación
+                      Proyectos en Documentación
                     </div>
+
+                    {/* Chips de los proyectos ya vinculados */}
+                    {chatProjectSlugs.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {chatProjectSlugs.map(slug => {
+                          const proj = docProjects.find(p => p.slug === slug);
+                          const label = proj?.company ? `${slug} · ${proj.company}` : slug;
+                          return (
+                            <span
+                              key={slug}
+                              className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium"
+                              style={{ background: 'rgba(0,161,156,0.12)', color: '#00A19C' }}
+                            >
+                              {label}
+                              <button
+                                onClick={() => handleRemoveProject(slug)}
+                                disabled={savingChatProject}
+                                title="Quitar proyecto"
+                                className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-red-500/20 hover:text-red-600 transition-colors disabled:opacity-40"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div className="relative">
                       <input
                         type="text"
-                        value={projectDropdownOpen ? projectSearch : currentLabel}
+                        value={projectSearch}
                         onChange={(e) => { setProjectSearch(e.target.value); setProjectDropdownOpen(true); setProjectHighlight(0); }}
-                        onFocus={() => { setProjectDropdownOpen(true); setProjectSearch(''); setProjectHighlight(0); }}
+                        onFocus={() => { setProjectDropdownOpen(true); setProjectHighlight(0); }}
                         onBlur={() => { setTimeout(() => setProjectDropdownOpen(false), 150); }}
                         onKeyDown={(e) => {
                           if (!projectDropdownOpen) return;
@@ -2757,32 +2800,21 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                           else if (e.key === 'Enter') { e.preventDefault(); if (filtered[projectHighlight]) pickProject(filtered[projectHighlight].slug); }
                           else if (e.key === 'Escape') { setProjectDropdownOpen(false); }
                         }}
-                        placeholder={chatProjectSlug ? '' : 'Buscar proyecto o empresa…'}
+                        placeholder={chatProjectSlugs.length ? 'Agregar otro proyecto…' : 'Buscar proyecto o empresa…'}
                         disabled={savingChatProject}
-                        className="w-full text-sm px-3 py-2 pr-20 rounded-lg border focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50"
+                        className="w-full text-sm px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50"
                         style={{
                           background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff',
                           borderColor: 'var(--border-primary)',
                           color: 'var(--text-primary)',
                         }}
                       />
-                      {chatProjectSlug && !projectDropdownOpen && (
-                        <button
-                          onClick={() => handleChangeChatProject(null)}
-                          disabled={savingChatProject}
-                          title="Desvincular"
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold px-2 py-1 rounded transition-colors disabled:opacity-40"
-                          style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626' }}
-                        >
-                          Quitar
-                        </button>
-                      )}
                       {projectDropdownOpen && (
                         <div className="absolute left-0 right-0 top-full mt-1 rounded-lg shadow-lg max-h-56 overflow-y-auto z-20"
                           style={{ background: isDarkMode ? '#1e293b' : '#ffffff', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}` }}>
                           {filtered.length === 0 ? (
                             <div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-tertiary)' }}>
-                              Sin coincidencias
+                              {chatProjectSlugs.length === docProjects.length ? 'Todos los proyectos ya están vinculados' : 'Sin coincidencias'}
                             </div>
                           ) : filtered.map((p, i) => (
                             <button
@@ -2791,32 +2823,29 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                               onMouseEnter={() => setProjectHighlight(i)}
                               className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between gap-2 ${
                                 i === projectHighlight ? 'bg-teal-50 dark:bg-teal-900/30' : ''
-                              } ${p.slug === chatProjectSlug ? 'font-semibold' : ''}`}
+                              }`}
                               style={{ color: 'var(--text-primary)' }}
                             >
                               <span className="flex-1 min-w-0 truncate">{p.slug}</span>
-                              <span className="flex items-center gap-1.5 flex-shrink-0">
-                                {p.company && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{
-                                    background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                                    color: isDarkMode ? '#cbd5e1' : '#475569',
-                                  }}>
-                                    {p.company}
-                                  </span>
-                                )}
-                                {p.slug === chatProjectSlug && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,161,156,0.15)', color: '#00a19c' }}>actual</span>
-                                )}
-                              </span>
+                              {p.company && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0" style={{
+                                  background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                  color: isDarkMode ? '#cbd5e1' : '#475569',
+                                }}>
+                                  {p.company}
+                                </span>
+                              )}
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
                     <div className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                      {chatProjectSlug
-                        ? `IA leerá la doc de "${chatProjectSlug}" para contextualizar.`
-                        : `Sin doc vinculada (${docProjects.length} proyectos disponibles). Click para buscar.`}
+                      {chatProjectSlugs.length === 0
+                        ? `Sin docs vinculadas (${docProjects.length} proyectos disponibles).`
+                        : chatProjectSlugs.length === 1
+                        ? `IA leerá la doc de "${chatProjectSlugs[0]}".`
+                        : `IA leerá las docs de ${chatProjectSlugs.length} proyectos (se reparte el presupuesto).`}
                     </div>
                   </div>
                 );
