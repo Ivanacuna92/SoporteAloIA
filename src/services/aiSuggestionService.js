@@ -36,6 +36,99 @@ function isExcludedParticipant(participantJid) {
     return false;
 }
 
+async function callDeepSeek(messages, { max_tokens = 400, temperature = 0.6 } = {}) {
+    const res = await axios.post(config.deepseekApiUrl, {
+        model: 'deepseek-chat',
+        messages,
+        max_tokens,
+        temperature,
+        response_format: { type: 'json_object' }
+    }, {
+        headers: {
+            'Authorization': `Bearer ${config.deepseekApiKey}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 25000
+    });
+    return res.data.choices[0].message.content;
+}
+
+async function generateOptionsDeepSeek({ messageText, mediaDescription, contextMsgs, projectContext, projectSlugs }) {
+    const projectBlock = projectContext
+        ? `\n\nDOCUMENTACION TECNICA DEL PROYECTO "${(projectSlugs || []).join(', ') || 'activo'}" (usa esto como fuente de verdad; si contradice tu conocimiento general, gana la doc):\n${projectContext}\n`
+        : '';
+
+    const systemPrompt = `Eres un agente humano del equipo de SOPORTE de Aloia. Estas monitoreando un grupo de WhatsApp con multiples participantes (clientes, lideres, equipo).
+
+PASO 0 — ¿Debes responder tu?
+Antes de pensar en que decir, decide si el soporte de Aloia realmente debe responder al mensaje. Devuelve OPCIONES VACIAS ({"option1":"","option2":""}) en TODOS estos casos:
+- El mensaje es un agradecimiento, "gracias", "👍", emoji sueltos, reacciones.
+- El mensaje es un broadcast de otro miembro del equipo (ej. "equipo, mañana junta a las 10", "les comparto el rol de guardias", "les recuerdo califiquen los leads").
+- El mensaje es chat interno entre otros participantes que no te menciona ni te pide nada (coordinacion, chismecito, confirmaciones tipo "va", "ok", "recibido", "gracias por la info").
+- El mensaje es un status update informativo que no pide accion de soporte.
+- El mensaje esta dirigido a OTRO participante por nombre, no al soporte.
+- No hay pregunta, ni problema tecnico, ni solicitud concreta que requiera a Aloia.
+
+Responde SOLO si el mensaje es claramente una pregunta, un problema, una queja, una solicitud tecnica o emocional dirigida al soporte. Mejor callar que meter ruido al grupo.
+
+PASO 1 — Si decides responder, estas reglas aplican:
+1. ENTIENDE EL HILO COMPLETO, no solo el ultimo mensaje. Lee toda la conversacion y detecta lo que realmente necesita el cliente.
+2. Si el cliente lleva varios mensajes esperando sin respuesta util, RECONOCE la demora o la frustracion antes de responder al asunto tecnico.
+3. Si hay descripcion de media abajo (imagen, audio, video analizado), usala como si tu la hubieras visto/escuchado directo.
+4. Responde al problema real del hilo, no solo al ultimo renglon.
+5. Dos opciones DISTINTAS en tono y enfoque (ej. una empatica, otra resolutiva). Max 2 oraciones cada una. Naturales, como un humano.
+6. Si tienes documentacion tecnica del proyecto abajo, USALA — nombres de archivos, URLs, flags, endpoints concretos. No inventes detalles tecnicos.${projectBlock}
+
+Devuelve SOLO JSON valido, sin markdown ni texto adicional:
+{"option1":"...","option2":"..."}`;
+
+    const history = (contextMsgs || []).map(m => {
+        const who = m.role === 'cliente' ? `Cliente (${m.userName || 'anonimo'})` : `Agente (${m.userName || 'soporte'})`;
+        let body = m.message || '';
+        if (!body && m.hasMedia) body = `[${m.mediaType || 'archivo'}]`;
+        return `${who}: ${body}`;
+    }).join('\n') || '(sin historial previo)';
+
+    const parts = [
+        `Hilo completo (cronologico, mas abajo = mas reciente):\n${history}`,
+        `\nUltimo mensaje del cliente al que vas a responder (recuerda: considera TODO el hilo, no solo esto):`
+    ];
+    if (messageText && messageText.trim()) {
+        parts.push(`Texto: "${messageText.trim()}"`);
+    }
+    if (mediaDescription) {
+        parts.push(mediaDescription);
+    }
+    if (!messageText && !mediaDescription) {
+        parts.push('(mensaje vacio sin texto ni media)');
+    }
+
+    const raw = await callDeepSeek([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: parts.join('\n') }
+    ], { max_tokens: 400, temperature: 0.6 });
+
+    try {
+        const obj = JSON.parse(raw);
+        return {
+            option1: typeof obj.option1 === 'string' ? obj.option1.trim() : '',
+            option2: typeof obj.option2 === 'string' ? obj.option2.trim() : ''
+        };
+    } catch {
+        const m = raw.match(/\{[\s\S]*\}/);
+        if (m) {
+            try {
+                const obj = JSON.parse(m[0]);
+                return {
+                    option1: typeof obj.option1 === 'string' ? obj.option1.trim() : '',
+                    option2: typeof obj.option2 === 'string' ? obj.option2.trim() : ''
+                };
+            } catch {}
+        }
+        return { option1: '', option2: '' };
+    }
+}
+
 async function supersedePending(chatPhone) {
     await database.query(
         `UPDATE ai_suggestions SET status = 'superseded', resolved_at = NOW()
@@ -77,8 +170,8 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
     const hasMedia = !!mediaInfo?.has_media;
     if (!hasText && !hasMedia) return null;
     if (isExcludedParticipant(participantJid)) return null;
-    if (!process.env.QWEN_API_KEY) {
-        console.log('[ai-suggestions] QWEN_API_KEY ausente — skip');
+    if (!config.deepseekApiKey) {
+        console.log('[ai-suggestions] DEEPSEEK_API_KEY ausente — skip');
         return null;
     }
 
@@ -133,13 +226,31 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
         console.log('[ai-suggestions] no pude cargar contexto doc:', e.message);
     }
 
+    // Si hay media, Qwen lo describe/transcribe a texto plano antes de pasar a DeepSeek
+    let mediaDescription = null;
+    if (hasMedia) {
+        try {
+            mediaDescription = await qwen.describeMedia(mediaInfo);
+            if (mediaDescription) console.log(`[ai-suggestions] Qwen describio ${mediaInfo.media_type}: "${mediaDescription.substring(0, 80)}..."`);
+        } catch (e) {
+            console.log('[ai-suggestions] Qwen describeMedia fallo:', e.message);
+        }
+    }
+
+    // DeepSeek es el cerebro — genera las 2 opciones con todo el contexto
     let option1 = '', option2 = '';
     try {
-        const res = await qwen.generateTwoOptions({ messageText, mediaInfo, contextMsgs, projectContext, projectSlug: projectSlugs.join(', ') || null });
+        const res = await generateOptionsDeepSeek({
+            messageText,
+            mediaDescription,
+            contextMsgs,
+            projectContext,
+            projectSlugs
+        });
         option1 = res.option1;
         option2 = res.option2;
     } catch (e) {
-        console.error('[ai-suggestions] Qwen fallo:', e.response?.data?.error?.message || e.message);
+        console.error('[ai-suggestions] DeepSeek fallo:', e.response?.data?.error?.message || e.message);
         return null;
     }
     if (!option1 && !option2) return null;
@@ -177,11 +288,16 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
 
 /**
  * Elegir cual de las 2 opciones mandar automaticamente.
- * Si Qwen falla, cae a option1.
+ * Si DeepSeek falla, cae a option1.
  */
 async function chooseAutoOption(suggestion) {
     try {
-        return await qwen.chooseBestOption({ option1: suggestion.option1, option2: suggestion.option2 });
+        const raw = await callDeepSeek([
+            { role: 'system', content: 'Elige la mejor respuesta de soporte entre dos opciones ya redactadas. Devuelve SOLO JSON {"choice":1} o {"choice":2}.' },
+            { role: 'user', content: `Opcion 1: ${suggestion.option1}\nOpcion 2: ${suggestion.option2}` }
+        ], { max_tokens: 20, temperature: 0.2 });
+        const obj = JSON.parse(raw);
+        return obj.choice === 2 ? 2 : 1;
     } catch {
         return 1;
     }
