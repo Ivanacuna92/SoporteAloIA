@@ -28,6 +28,21 @@ function looksLikeBackup(name) {
     return /\.bak(-|$)/.test(name) || /\.old(-|$)/.test(name) || name.startsWith('.');
 }
 
+// Parsea _sidebar.md para extraer mapa slug -> empresa.
+// Formato de cada entry: * **<slug>** <span class="project-company">EMPRESA</span>
+async function loadSlugCompanyMap() {
+    try {
+        const sidebar = await fs.readFile(path.join(DOCS_ROOT, '_sidebar.md'), 'utf8');
+        const map = {};
+        const re = /\*\s*\*\*([a-z0-9][a-z0-9_.-]+)\*\*\s*<span[^>]*class="project-company"[^>]*>([^<]+)<\/span>/gi;
+        let m;
+        while ((m = re.exec(sidebar)) !== null) {
+            map[m[1]] = m[2].trim();
+        }
+        return map;
+    } catch { return {}; }
+}
+
 async function listProjects() {
     let entries;
     try {
@@ -36,18 +51,28 @@ async function listProjects() {
         console.warn('[docs] no se pudo leer DOCS_ROOT:', e.message);
         return [];
     }
+    const companyMap = await loadSlugCompanyMap();
     const projects = [];
     for (const e of entries) {
         if (!e.isDirectory()) continue;
         if (EXCLUDE_DIRS.has(e.name)) continue;
         if (looksLikeBackup(e.name)) continue;
-        // Debe tener README.md
         try {
             await fs.access(path.join(DOCS_ROOT, e.name, 'README.md'));
-            projects.push({ slug: e.name, name: e.name });
+            projects.push({
+                slug: e.name,
+                name: e.name,
+                company: companyMap[e.name] || null,
+            });
         } catch {}
     }
-    projects.sort((a, b) => a.slug.localeCompare(b.slug));
+    // Orden: por empresa (los Aloia internos — sin empresa — al final), luego alfabético
+    projects.sort((a, b) => {
+        if (a.company && !b.company) return -1;
+        if (!a.company && b.company) return 1;
+        if (a.company && b.company && a.company !== b.company) return a.company.localeCompare(b.company);
+        return a.slug.localeCompare(b.slug);
+    });
     return projects;
 }
 

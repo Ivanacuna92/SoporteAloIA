@@ -2663,8 +2663,12 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (() => {
                 const query = projectSearch.trim().toLowerCase();
                 const filtered = query
-                  ? docProjects.filter(p => p.slug.toLowerCase().includes(query))
+                  ? docProjects.filter(p => p.slug.toLowerCase().includes(query) || (p.company || '').toLowerCase().includes(query))
                   : docProjects;
+                const currentProject = docProjects.find(p => p.slug === chatProjectSlug);
+                const currentLabel = currentProject
+                  ? (currentProject.company ? `${currentProject.slug} · ${currentProject.company}` : currentProject.slug)
+                  : (chatProjectSlug || '');
                 const pickProject = async (slug) => {
                   setProjectDropdownOpen(false);
                   setProjectSearch('');
@@ -2678,7 +2682,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                     <div className="relative">
                       <input
                         type="text"
-                        value={projectDropdownOpen ? projectSearch : (chatProjectSlug || '')}
+                        value={projectDropdownOpen ? projectSearch : currentLabel}
                         onChange={(e) => { setProjectSearch(e.target.value); setProjectDropdownOpen(true); setProjectHighlight(0); }}
                         onFocus={() => { setProjectDropdownOpen(true); setProjectSearch(''); setProjectHighlight(0); }}
                         onBlur={() => { setTimeout(() => setProjectDropdownOpen(false), 150); }}
@@ -2689,7 +2693,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                           else if (e.key === 'Enter') { e.preventDefault(); if (filtered[projectHighlight]) pickProject(filtered[projectHighlight].slug); }
                           else if (e.key === 'Escape') { setProjectDropdownOpen(false); }
                         }}
-                        placeholder={chatProjectSlug ? '' : 'Escribe para buscar proyecto…'}
+                        placeholder={chatProjectSlug ? '' : 'Buscar proyecto o empresa…'}
                         disabled={savingChatProject}
                         className="w-full text-sm px-3 py-2 pr-20 rounded-lg border focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50"
                         style={{
@@ -2721,15 +2725,25 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                               key={p.slug}
                               onMouseDown={(e) => { e.preventDefault(); pickProject(p.slug); }}
                               onMouseEnter={() => setProjectHighlight(i)}
-                              className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between ${
+                              className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between gap-2 ${
                                 i === projectHighlight ? 'bg-teal-50 dark:bg-teal-900/30' : ''
                               } ${p.slug === chatProjectSlug ? 'font-semibold' : ''}`}
                               style={{ color: 'var(--text-primary)' }}
                             >
-                              <span>{p.slug}</span>
-                              {p.slug === chatProjectSlug && (
-                                <span className="text-[10px] px-1.5 rounded" style={{ background: 'rgba(0,161,156,0.15)', color: '#00a19c' }}>actual</span>
-                              )}
+                              <span className="flex-1 min-w-0 truncate">{p.slug}</span>
+                              <span className="flex items-center gap-1.5 flex-shrink-0">
+                                {p.company && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{
+                                    background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                    color: isDarkMode ? '#cbd5e1' : '#475569',
+                                  }}>
+                                    {p.company}
+                                  </span>
+                                )}
+                                {p.slug === chatProjectSlug && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,161,156,0.15)', color: '#00a19c' }}>actual</span>
+                                )}
+                              </span>
                             </button>
                           ))}
                         </div>
