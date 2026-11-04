@@ -26,6 +26,11 @@ const VIP_PHONES = ['8118650283', '5532220893', '7711956440', '7711757809', '771
 const VIP_NAMES = new Set(['Ivan Acuña', 'Luis Martinez - Aloia', 'Max', 'Uli', 'Erick', 'Juan Carlos']);
 const ALOIA_AVATAR_URL = '/alo.png';
 
+const AVATAR_OVERRIDE_PARTICIPANTS = new Set([
+  '271588113051833@lid',
+  '5217714144641@s.whatsapp.net',
+]);
+
 function isVipParticipant(participant, userName) {
   if (participant && VIP_IDS.has(participant)) return true;
   if (userName && VIP_NAMES.has(userName)) return true;
@@ -1539,7 +1544,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
               {isClient && (
                 <div className="flex-shrink-0 mr-2 self-start" style={{ width: '28px', marginTop: '2px' }}>
                   {!sameSender ? (
-                    contact.isGroup && isVipParticipant(msg.participant, msg.userName) ? (
+                    AVATAR_OVERRIDE_PARTICIPANTS.has(msg.participant) && msg.participantPic ? (
+                      <img src={msg.participantPic} alt={pName} className="w-7 h-7 rounded-full object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                    ) : contact.isGroup && isVipParticipant(msg.participant, msg.userName) ? (
                       <img src={ALOIA_AVATAR_URL} alt="AloIA" className="w-7 h-7 rounded-full object-cover" style={{ backgroundColor: 'white' }} />
                     ) : msg.participantPic ? (
                       <img src={msg.participantPic} alt={pName} className="w-7 h-7 rounded-full object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />

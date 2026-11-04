@@ -14,6 +14,11 @@ const pushService = require('./pushService');
 const path = require('path');
 const fs = require('fs').promises;
 
+const AVATAR_OVERRIDES = {
+    '5217714144641@s.whatsapp.net': '/media/profile_pictures/custom-7714144641.png',
+    '271588113051833@lid': '/media/profile_pictures/custom-7714144641.png',
+};
+
 class WhatsAppInstanceManager {
     constructor() {
         this.instances = new Map(); // Map<supportUserId, instanceData>
@@ -66,6 +71,7 @@ class WhatsAppInstanceManager {
     // Obtener foto de perfil de un participante (con cache de 24h)
     async getParticipantProfilePic(sock, jid, displayName) {
         if (!jid) return null;
+        if (AVATAR_OVERRIDES[jid]) return AVATAR_OVERRIDES[jid];
         await this._ensureProfilePicTable();
 
         // Cache en memoria (5 min)
@@ -1130,6 +1136,7 @@ class WhatsAppInstanceManager {
 
     // Descargar y guardar foto de perfil
     async downloadAndSaveProfilePicture(sock, jid, type = 'group') {
+        if (AVATAR_OVERRIDES[jid]) return AVATAR_OVERRIDES[jid];
         try {
             // Intentar obtener la URL de la foto de perfil
             const profilePicUrl = await sock.profilePictureUrl(jid, 'image');

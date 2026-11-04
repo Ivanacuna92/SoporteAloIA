@@ -1,5 +1,10 @@
 const database = require('./database');
 
+const AVATAR_OVERRIDES = {
+    '5217714144641@s.whatsapp.net': '/media/profile_pictures/custom-7714144641.png',
+    '271588113051833@lid': '/media/profile_pictures/custom-7714144641.png',
+};
+
 class Logger {
     constructor() {
         this.logQueue = []; // Cola para logs en caso de error de BD
@@ -366,7 +371,7 @@ class Logger {
                 response: log.response,
                 supportUserId: log.support_user_id,
                 participant: log.participant,
-                participantPic: log.participant_pic || null,
+                participantPic: AVATAR_OVERRIDES[log.participant] || log.participant_pic || null,
                 // Campos de medios
                 hasMedia: log.has_media || false,
                 mediaType: log.media_type,
