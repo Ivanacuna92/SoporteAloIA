@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -356,6 +356,22 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [highlightedMsgId, setHighlightedMsgId] = useState(null);
   const highlightTimerRef = useRef(null);
+  const [editingParticipantId, setEditingParticipantId] = useState(null);
+  const [editingParticipantValue, setEditingParticipantValue] = useState('');
+  const [savingParticipant, setSavingParticipant] = useState(false);
+  const saveParticipantName = async (participantJid) => {
+    if (savingParticipant || !contact?.phone) return;
+    setSavingParticipant(true);
+    try {
+      const res = await setParticipantCustomName(contact.phone, participantJid, editingParticipantValue);
+      setGroupParticipants(prev => prev.map(p => p.id === participantJid ? { ...p, name: res.customName || p.name, customName: res.customName || null } : p));
+      setEditingParticipantId(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingParticipant(false);
+    }
+  };
   const scrollToQuotedMessage = (quotedId) => {
     if (!quotedId) return;
     const el = document.getElementById(`msg-${quotedId}`);
@@ -2519,25 +2535,60 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       })
                       .map((p) => {
                         const displayName = p.name || p.phone || p.id.split('@')[0];
-                        const subtitle = p.phone && p.name ? p.phone : null;
                         const initial = displayName.charAt(0).toUpperCase();
                         const pColor = getParticipantColor(displayName, isDarkMode);
+                        const isEditing = editingParticipantId === p.id;
                         return (
-                          <div key={p.id} className="flex items-center gap-2 py-1.5 px-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                          <div key={p.id} className="flex items-center gap-2 py-1.5 px-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ background: pColor }}>
                               {initial}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                                {displayName}
-                              </div>
-                              {subtitle && (
-                                <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text-tertiary)' }}>
-                                  {subtitle}
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={editingParticipantValue}
+                                  onChange={(e) => setEditingParticipantValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.preventDefault(); saveParticipantName(p.id); }
+                                    if (e.key === 'Escape') { e.preventDefault(); setEditingParticipantId(null); }
+                                  }}
+                                  onBlur={() => saveParticipantName(p.id)}
+                                  placeholder="Nombre (vacío = usar nombre real)"
+                                  className="w-full text-sm px-2 py-1 rounded border focus:outline-none focus:ring-2"
+                                  style={{
+                                    background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                                    borderColor: 'var(--border-primary)',
+                                    color: 'var(--text-primary)',
+                                  }}
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                                    {displayName}
+                                  </span>
+                                  {p.customName && (
+                                    <span title="Nombre personalizado" className="text-[10px] px-1 rounded" style={{ background: 'rgba(0, 161, 156, 0.15)', color: '#00a19c' }}>
+                                      alias
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </div>
-                            {p.admin && (
+                            {!isEditing && (
+                              <button
+                                onClick={() => { setEditingParticipantId(p.id); setEditingParticipantValue(p.customName || ''); }}
+                                title="Editar nombre"
+                                className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10 dark:hover:bg-white/10"
+                                style={{ color: 'var(--text-secondary)' }}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                            {!isEditing && p.admin && (
                               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{
                                 background: p.admin === 'superadmin' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(0, 161, 156, 0.15)',
                                 color: p.admin === 'superadmin' ? '#ca8a04' : '#00a19c',

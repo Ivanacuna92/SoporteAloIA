@@ -131,6 +131,7 @@ class DatabaseInit {
                     participant_jid VARCHAR(100) NOT NULL,
                     phone_jid VARCHAR(100),
                     display_name VARCHAR(255),
+                    custom_name VARCHAR(255) NULL,
                     admin_role VARCHAR(20),
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY uk_group_participant (group_jid, participant_jid),
@@ -138,6 +139,10 @@ class DatabaseInit {
                     INDEX idx_group (group_jid)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             `);
+            // Migration idempotente para instalaciones previas sin custom_name
+            try {
+                await database.query(`ALTER TABLE group_participants ADD COLUMN custom_name VARCHAR(255) NULL AFTER display_name`);
+            } catch (e) { /* ignore ER_DUP_FIELDNAME */ }
 
             // Tabla de receipts individuales por participante
             await database.query(`

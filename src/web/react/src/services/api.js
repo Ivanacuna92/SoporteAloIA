@@ -828,6 +828,18 @@ export async function getGroupParticipants(groupId) {
   return response.json();
 }
 
+export async function setParticipantCustomName(groupId, participantJid, customName) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/group-participant/custom-name`, {
+    method: 'POST',
+    body: JSON.stringify({ groupId, participantJid, customName })
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error guardando nombre');
+  }
+  return response.json();
+}
+
 // Obtener receipts de un mensaje
 export async function getMessageReceipts(messageId) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/message-receipts/${messageId}`);

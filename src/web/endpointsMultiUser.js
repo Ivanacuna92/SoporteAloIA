@@ -1099,7 +1099,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
             // Enriquecer con cache de group_participants
             try {
                 const cached = await database.query(
-                    'SELECT participant_jid, display_name, phone_jid FROM group_participants WHERE group_jid = ?',
+                    'SELECT participant_jid, display_name, custom_name, phone_jid FROM group_participants WHERE group_jid = ?',
                     [groupJid]
                 );
                 const cachedMap = {};
@@ -1112,6 +1112,11 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     }
                     if (!p.name && cachedMap[p.id]?.display_name) {
                         p.name = cachedMap[p.id].display_name;
+                    }
+                    // custom_name (alias puesto a mano desde el panel) siempre gana
+                    if (cachedMap[p.id]?.custom_name) {
+                        p.customName = cachedMap[p.id].custom_name;
+                        p.name = cachedMap[p.id].custom_name;
                     }
                     // Sólo usar el teléfono cacheado si es un JID real (@s.whatsapp.net), nunca un @lid
                     if (!p.phone && cachedMap[p.id]?.phone_jid && cachedMap[p.id].phone_jid.endsWith('@s.whatsapp.net')) {
@@ -1128,6 +1133,41 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error obteniendo participantes del grupo:', error);
             res.status(500).json({ error: 'Error obteniendo participantes', details: error.message });
+        }
+    });
+
+    // Fijar / limpiar el nombre personalizado de un participante
+    app.post('/api/my-instance/group-participant/custom-name', requireAuth, async (req, res) => {
+        try {
+            const { groupId, participantJid, customName } = req.body || {};
+            if (!groupId || !participantJid) {
+                return res.status(400).json({ error: 'groupId y participantJid son requeridos' });
+            }
+            const groupJid = groupId.includes('@') ? groupId : `${groupId}@g.us`;
+            const trimmed = typeof customName === 'string' ? customName.trim() : null;
+            const value = trimmed ? trimmed.substring(0, 255) : null;
+
+            const existing = await database.findOne(
+                'group_participants',
+                'group_jid = ? AND participant_jid = ?',
+                [groupJid, participantJid]
+            );
+            if (existing) {
+                await database.query(
+                    'UPDATE group_participants SET custom_name = ? WHERE group_jid = ? AND participant_jid = ?',
+                    [value, groupJid, participantJid]
+                );
+            } else {
+                await database.query(
+                    `INSERT INTO group_participants (group_jid, participant_jid, custom_name)
+                     VALUES (?, ?, ?)`,
+                    [groupJid, participantJid, value]
+                );
+            }
+            res.json({ ok: true, customName: value });
+        } catch (error) {
+            console.error('Error guardando custom_name:', error);
+            res.status(500).json({ error: 'Error guardando nombre', details: error.message });
         }
     });
 
