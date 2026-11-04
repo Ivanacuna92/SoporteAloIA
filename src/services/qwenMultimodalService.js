@@ -100,7 +100,10 @@ async function callQwenChat(messages, { max_tokens = 400, temperature = 0.6, res
  * Genera 2 opciones de respuesta considerando media + contexto conversacional.
  * contextMsgs: array de logs previos (ordenados cronológicamente).
  */
-async function generateTwoOptions({ messageText, mediaInfo, contextMsgs }) {
+async function generateTwoOptions({ messageText, mediaInfo, contextMsgs, projectContext, projectSlug }) {
+    const projectBlock = projectContext
+        ? `\n\nDOCUMENTACION TECNICA DEL PROYECTO "${projectSlug || 'activo'}" (usa esto como fuente de verdad para responder preguntas tecnicas; si contradice tu conocimiento general, gana la doc):\n${projectContext}\n`
+        : '';
     const systemPrompt = `Eres un agente humano de soporte para Aloia (plataforma de WhatsApp con atencion humana + IA). Estas por responder en un grupo con un cliente.
 
 REGLAS CRITICAS:
@@ -110,6 +113,7 @@ REGLAS CRITICAS:
 4. Responde SIEMPRE al problema real del hilo, no solo al ultimo renglon.
 5. Dos opciones DISTINTAS en tono y enfoque (ej. una mas empatica, otra mas resolutiva). Cortas: max 2 oraciones cada una. Naturales, como las escribio un humano, no robot.
 6. Si el ultimo mensaje es un "ok", emoji o reaccion sin requerir respuesta, devuelve opciones vacias.
+7. Si tienes documentacion tecnica del proyecto abajo, USALA — menciona pasos concretos, nombres de archivos, URLs, flags o endpoints cuando apliquen. No inventes detalles tecnicos si no estan en la doc.${projectBlock}
 
 Devuelve SOLO JSON valido, sin markdown ni texto adicional:
 {"option1":"...","option2":"..."}`;

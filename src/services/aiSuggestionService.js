@@ -3,6 +3,7 @@ const config = require('../config/config');
 const database = require('./database');
 const logger = require('./logger');
 const qwen = require('./qwenMultimodalService');
+const docsProjectService = require('./docsProjectService');
 
 const SUGGESTION_TTL_MINUTES = 5;
 const CONTEXT_WINDOW = 25;
@@ -92,9 +93,24 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
         console.log('[ai-suggestions] error leyendo contexto:', e.message);
     }
 
+    // Resolver link chat ↔ proyecto de la doc y cargar contexto si aplica
+    let projectContext = null, projectSlug = null;
+    try {
+        const link = await database.findOne('chat_project_links', 'chat_phone = ?', [chatPhone]);
+        if (link?.project_slug) {
+            projectSlug = link.project_slug;
+            projectContext = await docsProjectService.getProjectContext(projectSlug);
+            if (projectContext) {
+                console.log(`[ai-suggestions] usando docs de "${projectSlug}" (${projectContext.length} chars)`);
+            }
+        }
+    } catch (e) {
+        console.log('[ai-suggestions] no pude cargar contexto doc:', e.message);
+    }
+
     let option1 = '', option2 = '';
     try {
-        const res = await qwen.generateTwoOptions({ messageText, mediaInfo, contextMsgs });
+        const res = await qwen.generateTwoOptions({ messageText, mediaInfo, contextMsgs, projectContext, projectSlug });
         option1 = res.option1;
         option2 = res.option2;
     } catch (e) {

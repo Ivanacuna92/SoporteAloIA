@@ -5,6 +5,7 @@ const authService = require('../services/authService');
 const database = require('../services/database');
 const pushService = require('../services/pushService');
 const aiSuggestionService = require('../services/aiSuggestionService');
+const docsProjectService = require('../services/docsProjectService');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -1134,6 +1135,52 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error obteniendo participantes del grupo:', error);
             res.status(500).json({ error: 'Error obteniendo participantes', details: error.message });
+        }
+    });
+
+    // ===== ENDPOINTS DE DOCS PROJECTS =====
+
+    // Lista de proyectos disponibles en el mirror de documentacion-aloia
+    app.get('/api/my-instance/doc-projects', requireAuth, async (req, res) => {
+        try {
+            const projects = await docsProjectService.listProjects();
+            res.json(projects);
+        } catch (e) {
+            res.status(500).json({ error: 'Error listando proyectos', details: e.message });
+        }
+    });
+
+    // Link actual del chat (o null)
+    app.get('/api/my-instance/chat-project/:chatPhone', requireAuth, async (req, res) => {
+        try {
+            const row = await database.findOne('chat_project_links', 'chat_phone = ?', [req.params.chatPhone]);
+            res.json(row ? { chatPhone: row.chat_phone, projectSlug: row.project_slug, updatedAt: row.updated_at } : null);
+        } catch (e) {
+            res.status(500).json({ error: 'Error obteniendo link', details: e.message });
+        }
+    });
+
+    // Fijar o limpiar el link chat↔proyecto
+    app.post('/api/my-instance/chat-project', requireAuth, async (req, res) => {
+        try {
+            const { chatPhone, projectSlug } = req.body || {};
+            if (!chatPhone) return res.status(400).json({ error: 'chatPhone requerido' });
+            if (projectSlug) {
+                if (!(await docsProjectService.projectExists(projectSlug))) {
+                    return res.status(400).json({ error: 'Proyecto no existe en el mirror' });
+                }
+                await database.query(
+                    `INSERT INTO chat_project_links (chat_phone, project_slug) VALUES (?, ?)
+                     ON DUPLICATE KEY UPDATE project_slug = VALUES(project_slug)`,
+                    [chatPhone, projectSlug]
+                );
+                res.json({ ok: true, chatPhone, projectSlug });
+            } else {
+                await database.query(`DELETE FROM chat_project_links WHERE chat_phone = ?`, [chatPhone]);
+                res.json({ ok: true, chatPhone, projectSlug: null });
+            }
+        } catch (e) {
+            res.status(500).json({ error: 'Error guardando link', details: e.message });
         }
     });
 

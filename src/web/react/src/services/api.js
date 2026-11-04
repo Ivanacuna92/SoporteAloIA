@@ -865,6 +865,29 @@ export async function dismissSuggestion(id) {
   return response.json();
 }
 
+// ===== Doc projects =====
+export async function listDocProjects() {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/doc-projects`);
+  if (!response.ok) return [];
+  return response.json();
+}
+export async function getChatProjectLink(chatPhone) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/chat-project/${chatPhone}`);
+  if (!response.ok) return null;
+  return response.json();
+}
+export async function setChatProjectLink(chatPhone, projectSlug) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/chat-project`, {
+    method: 'POST',
+    body: JSON.stringify({ chatPhone, projectSlug })
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Error guardando link');
+  }
+  return response.json();
+}
+
 // Obtener receipts de un mensaje
 export async function getMessageReceipts(messageId) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/message-receipts/${messageId}`);

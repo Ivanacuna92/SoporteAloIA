@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion, listDocProjects, getChatProjectLink, setChatProjectLink } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -362,6 +362,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiCountdown, setAiCountdown] = useState(0);
   const [aiBusy, setAiBusy] = useState(false);
+  const [docProjects, setDocProjects] = useState([]);
+  const [chatProjectSlug, setChatProjectSlug] = useState(null);
+  const [savingChatProject, setSavingChatProject] = useState(false);
   const saveParticipantName = async (participantJid) => {
     if (savingParticipant || !contact?.phone) return;
     setSavingParticipant(true);
@@ -727,6 +730,30 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
     finally { setAiBusy(false); }
   };
   const aiFmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  // Cargar lista de proyectos de la doc (una vez)
+  useEffect(() => {
+    listDocProjects().then(setDocProjects).catch(() => setDocProjects([]));
+  }, []);
+
+  // Cargar link actual del chat
+  useEffect(() => {
+    if (!contact?.phone || !contact?.isGroup) { setChatProjectSlug(null); return; }
+    getChatProjectLink(contact.phone).then(link => setChatProjectSlug(link?.projectSlug || null)).catch(() => setChatProjectSlug(null));
+  }, [contact?.phone, contact?.isGroup]);
+
+  const handleChangeChatProject = async (newSlug) => {
+    if (!contact?.phone || savingChatProject) return;
+    setSavingChatProject(true);
+    try {
+      await setChatProjectLink(contact.phone, newSlug || null);
+      setChatProjectSlug(newSlug || null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingChatProject(false);
+    }
+  };
 
   useEffect(() => {
     // Scroll suave cuando llegan nuevos mensajes.
@@ -2628,6 +2655,34 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 <div>
                   <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>ID interno</div>
                   <div className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{contactInfoModal.rawId}</div>
+                </div>
+              )}
+              {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (
+                <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                  <div className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Proyecto en Documentación
+                  </div>
+                  <select
+                    value={chatProjectSlug || ''}
+                    onChange={(e) => handleChangeChatProject(e.target.value)}
+                    disabled={savingChatProject}
+                    className="w-full text-sm px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50"
+                    style={{
+                      background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff',
+                      borderColor: 'var(--border-primary)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value="">— Sin proyecto vinculado —</option>
+                    {docProjects.map((p) => (
+                      <option key={p.slug} value={p.slug}>{p.slug}</option>
+                    ))}
+                  </select>
+                  <div className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                    {chatProjectSlug
+                      ? `Las sugerencias IA leerán la doc de "${chatProjectSlug}" para contextualizar.`
+                      : 'Sin doc vinculada. La IA solo usa el historial del chat.'}
+                  </div>
                 </div>
               )}
               {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && groupParticipants.length > 0 && (
