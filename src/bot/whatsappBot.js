@@ -1,5 +1,6 @@
-const makeWASocket = require('baileys').default;
-const { DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion } = require('baileys');
+// Baileys 7.x es ESM-only; cargar lazy via dynamic import desde CJS.
+let _baileysPromise = null;
+const loadBaileys = () => (_baileysPromise ||= import('baileys'));
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const config = require('../config/config');
@@ -30,9 +31,10 @@ class WhatsAppBot {
         config.validateApiKey();
         
         try {
+            const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = await loadBaileys();
             // Configurar autenticación multi-archivo
             const { state, saveCreds } = await useMultiFileAuthState('./auth_baileys');
-            
+
             // Obtener versión más reciente de Baileys
             const { version, isLatest } = await fetchLatestBaileysVersion();
             console.log(`Usando versión de WhatsApp Web: ${version.join('.')} (última: ${isLatest})`);
@@ -66,7 +68,8 @@ class WhatsAppBot {
         this.sock.ev.on('creds.update', saveCreds);
         
         // Manejar actualizaciones de conexión
-        this.sock.ev.on('connection.update', (update) => {
+        this.sock.ev.on('connection.update', async (update) => {
+            const { DisconnectReason } = await loadBaileys();
             const { connection, lastDisconnect, qr } = update;
             
             if (qr) {
