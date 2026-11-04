@@ -2,9 +2,10 @@ const axios = require('axios');
 const config = require('../config/config');
 const database = require('./database');
 const logger = require('./logger');
+const qwen = require('./qwenMultimodalService');
 
 const SUGGESTION_TTL_MINUTES = 5;
-const CONTEXT_WINDOW = 15;
+const CONTEXT_WINDOW = 25;
 
 // Números excluidos — mensajes de estos participantes no disparan sugerencias.
 // Comparamos contra el participant JID normalizado a solo-dígitos.
@@ -32,56 +33,6 @@ function isExcludedParticipant(participantJid) {
         if (digits.endsWith(n) || n.endsWith(digits)) return true;
     }
     return false;
-}
-
-function buildPrompt(contextMsgs, lastMsg) {
-    const system = `Eres un asistente de soporte comercial para Aloia (plataforma de WhatsApp con atencion humana + IA). Lees un fragmento de conversacion de un grupo donde participan clientes y agentes. El cliente acaba de enviar un mensaje. Tu tarea es generar DOS respuestas distintas y cortas (max 2 oraciones cada una) que un agente humano podria mandar. Las opciones deben ser utiles, resolver o avanzar la consulta, y sonar como las escribio una persona real (no robotico, ni excesivamente formal). Si el mensaje del cliente no requiere respuesta (ej. una reaccion emoji aislada o un "ok" final), responde con JSON de opciones vacias.
-Devuelve SOLO JSON valido con esta forma exacta:
-{"option1":"...","option2":"..."}
-Sin texto adicional, sin markdown, sin comentarios.`;
-
-    const history = contextMsgs.map(m => {
-        const who = m.role === 'cliente' ? `Cliente (${m.userName || 'anonimo'})` : `Agente (${m.userName || 'soporte'})`;
-        let body = m.message || '';
-        if (!body && m.hasMedia) body = `[${m.mediaType || 'archivo'}]`;
-        return `${who}: ${body}`;
-    }).join('\n');
-
-    const user = `Conversacion reciente (orden cronologico):\n${history}\n\nMensaje actual del cliente al que debes proponer 2 respuestas:\n${lastMsg}`;
-
-    return [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-    ];
-}
-
-async function callDeepSeek(messages, { max_tokens = 300, temperature = 0.6 } = {}) {
-    const res = await axios.post(config.deepseekApiUrl, {
-        model: 'deepseek-chat',
-        messages,
-        max_tokens,
-        temperature,
-        response_format: { type: 'json_object' }
-    }, {
-        headers: {
-            'Authorization': `Bearer ${config.deepseekApiKey}`,
-            'Content-Type': 'application/json'
-        },
-        timeout: 20000
-    });
-    return res.data.choices[0].message.content;
-}
-
-function parseOptions(raw) {
-    try {
-        const obj = JSON.parse(raw);
-        return {
-            option1: typeof obj.option1 === 'string' ? obj.option1.trim() : '',
-            option2: typeof obj.option2 === 'string' ? obj.option2.trim() : ''
-        };
-    } catch {
-        return { option1: '', option2: '' };
-    }
 }
 
 async function supersedePending(chatPhone) {
@@ -120,11 +71,13 @@ async function getSuggestionById(id) {
  * Genera 2 sugerencias para un mensaje entrante del cliente.
  * Retorna la fila insertada o null si no se genero (excluido, sin texto, fallo API).
  */
-async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId, participantJid, messageText }) {
-    if (!messageText || messageText.trim().length < 2) return null;
+async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId, participantJid, messageText, mediaInfo }) {
+    const hasText = messageText && messageText.trim().length >= 2;
+    const hasMedia = !!mediaInfo?.has_media;
+    if (!hasText && !hasMedia) return null;
     if (isExcludedParticipant(participantJid)) return null;
-    if (!config.deepseekApiKey) {
-        console.log('[ai-suggestions] DEEPSEEK_API_KEY ausente — skip');
+    if (!process.env.QWEN_API_KEY) {
+        console.log('[ai-suggestions] QWEN_API_KEY ausente — skip');
         return null;
     }
 
@@ -139,15 +92,15 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
         console.log('[ai-suggestions] error leyendo contexto:', e.message);
     }
 
-    const prompt = buildPrompt(contextMsgs, messageText);
-    let raw;
+    let option1 = '', option2 = '';
     try {
-        raw = await callDeepSeek(prompt);
+        const res = await qwen.generateTwoOptions({ messageText, mediaInfo, contextMsgs });
+        option1 = res.option1;
+        option2 = res.option2;
     } catch (e) {
-        console.error('[ai-suggestions] DeepSeek fallo:', e.response?.data?.error?.message || e.message);
+        console.error('[ai-suggestions] Qwen fallo:', e.response?.data?.error?.message || e.message);
         return null;
     }
-    const { option1, option2 } = parseOptions(raw);
     if (!option1 && !option2) return null;
 
     const expiresAt = new Date(Date.now() + SUGGESTION_TTL_MINUTES * 60 * 1000);
@@ -182,18 +135,12 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
 }
 
 /**
- * Elegir cual de las 2 opciones mandar automaticamente, dado contexto actualizado.
- * Si DeepSeek falla, cae a option1.
+ * Elegir cual de las 2 opciones mandar automaticamente.
+ * Si Qwen falla, cae a option1.
  */
 async function chooseAutoOption(suggestion) {
     try {
-        const prompt = [
-            { role: 'system', content: 'Eres un asistente que elige la mejor respuesta de soporte entre dos opciones ya redactadas. Devuelve SOLO JSON {"choice":1} o {"choice":2}. Sin texto adicional.' },
-            { role: 'user', content: `Opcion 1: ${suggestion.option1}\nOpcion 2: ${suggestion.option2}\n\nElige la que suene mas natural y resuelva mejor al cliente.` }
-        ];
-        const raw = await callDeepSeek(prompt, { max_tokens: 20, temperature: 0.2 });
-        const obj = JSON.parse(raw);
-        return obj.choice === 2 ? 2 : 1;
+        return await qwen.chooseBestOption({ option1: suggestion.option1, option2: suggestion.option2 });
     } catch {
         return 1;
     }

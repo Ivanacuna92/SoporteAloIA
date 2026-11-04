@@ -983,13 +983,15 @@ class WhatsAppInstanceManager {
             await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant, quotedMsgInfo);
 
             // Disparar sugerencias IA (async, no bloquea el handler)
-            if (messageText && messageText.trim()) {
+            // Dispara si hay texto O si hay media — Qwen entiende audios/imagenes/videos
+            if ((messageText && messageText.trim()) || mediaInfo?.has_media) {
                 aiSuggestionService.generateSuggestions({
                     supportUserId,
                     chatPhone: groupId,
                     triggerMessageId: messageId,
                     participantJid: participant,
-                    messageText
+                    messageText,
+                    mediaInfo
                 }).catch(err => console.error('[ai-suggestions] generate fail:', err.message));
             }
 
