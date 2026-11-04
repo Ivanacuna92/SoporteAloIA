@@ -1,6 +1,6 @@
-// Baileys 7.x es ESM-only; el resto del proyecto es CJS. Cargamos lazy via dynamic import.
-let _baileysPromise = null;
-const loadBaileys = () => (_baileysPromise ||= import('baileys'));
+// Baileys 6.x es CJS, require directo.
+const makeWASocket = require('baileys').default;
+const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = require('baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const database = require('./database');
@@ -143,7 +143,6 @@ class WhatsAppInstanceManager {
     // Crear/iniciar instancia para un usuario
     async startInstance(supportUserId, instanceName) {
         try {
-            const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = await loadBaileys();
             console.log(`🚀 Iniciando instancia de WhatsApp para usuario ${supportUserId}...`);
 
             // Verificar si ya existe una instancia activa
@@ -343,7 +342,6 @@ class WhatsAppInstanceManager {
 
     // Manejar actualización de conexión
     async handleConnectionUpdate(supportUserId, update, authPath) {
-        const { DisconnectReason } = await loadBaileys();
         const { connection, lastDisconnect, qr } = update;
         const instanceData = this.instances.get(supportUserId);
 
@@ -1151,7 +1149,6 @@ class WhatsAppInstanceManager {
             }
 
             // Descargar el medio
-            const { downloadMediaMessage } = await loadBaileys();
             const buffer = await downloadMediaMessage(
                 msg,
                 'buffer',

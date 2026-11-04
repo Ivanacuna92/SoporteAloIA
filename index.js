@@ -8,6 +8,8 @@ const config = require('./src/config/config');
 const databaseInit = require('./src/services/databaseInit');
 const database = require('./src/services/database');
 const aiSuggestionService = require('./src/services/aiSuggestionService');
+const zombieWatchdog = require('./src/services/zombieWatchdog');
+const aiSuggestionService = require('./src/services/aiSuggestionService');
 
 // Exponer el manager globalmente para el servidor web
 global.whatsappInstanceManager = whatsappInstanceManager;
@@ -67,6 +69,9 @@ async function start() {
             });
         }, 30 * 1000);
         console.log('🤖 Cron de sugerencias IA activo (30s)');
+
+        // Watchdog: detectar Baileys zombie (status=connected pero deja de recibir)
+        zombieWatchdog.start();
     } catch (error) {
         console.error('❌ Error iniciando aplicación:', error);
         process.exit(1);
