@@ -1184,6 +1184,30 @@ module.exports = function(app, requireAuth, requireAdmin) {
         }
     });
 
+    // Toggle de sugerencias IA por chat
+    app.get('/api/my-instance/ai-settings/:chatPhone', requireAuth, async (req, res) => {
+        try {
+            const row = await database.findOne('chat_ai_settings', 'chat_phone = ?', [req.params.chatPhone]);
+            res.json({ aiEnabled: row ? row.ai_enabled !== 0 : true });
+        } catch (e) {
+            res.status(500).json({ error: 'Error leyendo settings', details: e.message });
+        }
+    });
+    app.post('/api/my-instance/ai-settings', requireAuth, async (req, res) => {
+        try {
+            const { chatPhone, aiEnabled } = req.body || {};
+            if (!chatPhone) return res.status(400).json({ error: 'chatPhone requerido' });
+            await database.query(
+                `INSERT INTO chat_ai_settings (chat_phone, ai_enabled) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE ai_enabled = VALUES(ai_enabled)`,
+                [chatPhone, aiEnabled ? 1 : 0]
+            );
+            res.json({ ok: true, chatPhone, aiEnabled: !!aiEnabled });
+        } catch (e) {
+            res.status(500).json({ error: 'Error guardando settings', details: e.message });
+        }
+    });
+
     // ===== ENDPOINTS DE SUGERENCIAS IA =====
 
     // Pending de un chat (si existe)

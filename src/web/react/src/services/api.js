@@ -888,6 +888,20 @@ export async function setChatProjectLink(chatPhone, projectSlug) {
   return response.json();
 }
 
+export async function getChatAiSettings(chatPhone) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/ai-settings/${chatPhone}`);
+  if (!response.ok) return { aiEnabled: true };
+  return response.json();
+}
+export async function setChatAiEnabled(chatPhone, aiEnabled) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/ai-settings`, {
+    method: 'POST',
+    body: JSON.stringify({ chatPhone, aiEnabled })
+  });
+  if (!response.ok) throw new Error('Error guardando toggle IA');
+  return response.json();
+}
+
 // Obtener receipts de un mensaje
 export async function getMessageReceipts(messageId) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/message-receipts/${messageId}`);

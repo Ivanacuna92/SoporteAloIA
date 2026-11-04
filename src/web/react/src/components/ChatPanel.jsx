@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
-import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion, listDocProjects, getChatProjectLink, setChatProjectLink } from '../services/api';
+import { sendMyMessage, sendMyImage, sendMyDocument, sendMyAudio, sendMyVideo, forwardMyMessage, deleteMyMessage, editMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, sendMessageAdvanced, getGroupParticipants, setParticipantCustomName, getMyContacts, getMessageReceipts, sendSticker, saveStickerFavorite, getStickerFavorites, deleteStickerFavorite, sendStickerFromUrl, getMuteStates, toggleMute, archiveContact, getContactMessagesBefore, getPendingSuggestion, sendSuggestionOption, dismissSuggestion, listDocProjects, getChatProjectLink, setChatProjectLink, getChatAiSettings, setChatAiEnabled as setChatAiEnabled_api } from '../services/api';
 // Paleta de colores para participantes en grupos (light / dark)
 const PARTICIPANT_COLORS_LIGHT = [
   '#00A19C', '#E67E22', '#8E44AD', '#2980B9', '#D35400', '#1ABC9C',
@@ -368,6 +368,8 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [projectSearch, setProjectSearch] = useState('');
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [projectHighlight, setProjectHighlight] = useState(0);
+  const [chatAiEnabled, setChatAiEnabled] = useState(true);
+  const [savingChatAi, setSavingChatAi] = useState(false);
   const saveParticipantName = async (participantJid) => {
     if (savingParticipant || !contact?.phone) return;
     setSavingParticipant(true);
@@ -743,7 +745,23 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   useEffect(() => {
     if (!contact?.phone || !contact?.isGroup) { setChatProjectSlug(null); return; }
     getChatProjectLink(contact.phone).then(link => setChatProjectSlug(link?.projectSlug || null)).catch(() => setChatProjectSlug(null));
+    getChatAiSettings(contact.phone).then(s => setChatAiEnabled(s?.aiEnabled !== false)).catch(() => setChatAiEnabled(true));
   }, [contact?.phone, contact?.isGroup]);
+
+  const handleToggleChatAi = async () => {
+    if (!contact?.phone || savingChatAi) return;
+    const next = !chatAiEnabled;
+    setSavingChatAi(true);
+    setChatAiEnabled(next);
+    try {
+      await setChatAiEnabled_api(contact.phone, next);
+    } catch (e) {
+      setChatAiEnabled(!next);
+      console.error(e);
+    } finally {
+      setSavingChatAi(false);
+    }
+  };
 
   const handleChangeChatProject = async (newSlug) => {
     if (!contact?.phone || savingChatProject) return;
@@ -2658,6 +2676,28 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 <div>
                   <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>ID interno</div>
                   <div className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{contactInfoModal.rawId}</div>
+                </div>
+              )}
+              {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (
+                <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>
+                        Sugerencias IA
+                      </div>
+                      <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                        {chatAiEnabled ? 'Activas — propone 2 respuestas cuando aplica.' : 'Apagadas — no genera nada para este chat.'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleToggleChatAi}
+                      disabled={savingChatAi}
+                      aria-pressed={chatAiEnabled}
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${chatAiEnabled ? 'bg-teal-500' : 'bg-gray-300 dark:bg-slate-600'}`}
+                    >
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${chatAiEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} style={{ marginTop: '2px', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
+                    </button>
+                  </div>
                 </div>
               )}
               {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (() => {

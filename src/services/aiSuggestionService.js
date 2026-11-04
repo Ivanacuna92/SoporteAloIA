@@ -82,6 +82,15 @@ async function generateSuggestions({ supportUserId, chatPhone, triggerMessageId,
         return null;
     }
 
+    // Toggle por chat: si el operador apago la IA para este chat, respetar
+    try {
+        const settings = await database.findOne('chat_ai_settings', 'chat_phone = ?', [chatPhone]);
+        if (settings && settings.ai_enabled === 0) {
+            console.log(`[ai-suggestions] chat ${chatPhone} tiene IA apagada — skip`);
+            return null;
+        }
+    } catch {}
+
     // Supersede la pending anterior (si existe) ANTES de pedir a la API
     await supersedePending(chatPhone);
 
