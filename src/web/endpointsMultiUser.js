@@ -472,12 +472,25 @@ module.exports = function(app, requireAuth, requireAdmin) {
             console.log('📨 [SEND-MESSAGE] ChatId formateado:', chatId);
             console.log('📨 [SEND-MESSAGE] Llamando instanceManager.sendMessage...');
 
-            await instanceManager.sendMessage(req.user.id, chatId, message);
+            const sendResult = await instanceManager.sendMessage(req.user.id, chatId, message);
 
             console.log('✅ [SEND-MESSAGE] Mensaje enviado exitosamente');
 
-            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
-            // Esto evita mensajes duplicados
+            // Registrar directamente al enviar. El evento fromMe de Baileys no se
+            // está disparando de forma confiable, así que escribimos el log aquí.
+            // El handler de messages.upsert tiene check de duplicado por message_id.
+            try {
+                const logger = require('../services/logger');
+                const user = await database.findOne('support_users', 'id = ?', [req.user.id]);
+                const userName = user ? user.name : 'Soporte';
+                const messageId = sendResult?.key?.id || null;
+                await logger.log('soporte', message, phone, userName, true, null, req.user.id, messageId);
+                if (global.io) {
+                    global.io.emit('new-message', { phone, userName, message });
+                }
+            } catch (logErr) {
+                console.error('[send-message] fallo registrando en DB:', logErr.message);
+            }
 
             res.json({
                 success: true,

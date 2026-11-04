@@ -666,6 +666,21 @@ class WhatsAppInstanceManager {
                 // Detectar si es reenviado
                 const isForwarded = !!(contextInfo.isForwarded || contextInfo.forwardingScore > 0);
 
+                // Evitar duplicado: el endpoint send-message ya pudo haberlo
+                // registrado al enviar. Si message_id ya existe, no insertar de nuevo.
+                if (messageId) {
+                    try {
+                        const existing = await database.query(
+                            'SELECT 1 FROM conversation_logs WHERE message_id = ? LIMIT 1',
+                            [messageId]
+                        );
+                        if (existing.length > 0) {
+                            console.log(`⏭️  fromMe duplicado ignorado (ya registrado): ${messageId}`);
+                            return;
+                        }
+                    } catch (e) { /* si falla el check, seguimos y aceptamos el insert */ }
+                }
+
                 // Registrar mensaje como enviado por soporte
                 await logger.log('soporte', conversation || '', groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, null, quotedMsgInfo);
 
