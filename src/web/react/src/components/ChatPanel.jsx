@@ -2460,8 +2460,8 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
       {/* Modal info de contacto / miembro */}
       {contactInfoModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm" onClick={() => setContactInfoModal(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()} style={{ boxShadow: '0 20px 50px var(--shadow-lg)' }}>
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full mx-4 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} style={{ boxShadow: '0 20px 50px var(--shadow-lg)' }}>
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {contactInfoModal.isGroupMember ? 'Miembro del grupo' : (contactInfoModal.isGroup ? 'Información del grupo' : 'Información del contacto')}
               </h3>
@@ -2471,7 +2471,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 </svg>
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-y-auto flex-1 -mx-1 px-1">
               <div>
                 <div className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Nombre</div>
                 <div className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>{contactInfoModal.name || 'Sin nombre'}</div>
@@ -2488,7 +2488,7 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                       style={{ color: 'var(--text-secondary)', background: 'var(--bg-tertiary)' }}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 00-2 2z" />
                       </svg>
                     </button>
                   </div>
@@ -2504,10 +2504,57 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                   <div className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{contactInfoModal.rawId}</div>
                 </div>
               )}
+              {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && groupParticipants.length > 0 && (
+                <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                  <div className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Participantes ({groupParticipants.length})
+                  </div>
+                  <div className="space-y-1.5">
+                    {[...groupParticipants]
+                      .sort((a, b) => {
+                        const rankA = a.admin === 'superadmin' ? 0 : a.admin === 'admin' ? 1 : 2;
+                        const rankB = b.admin === 'superadmin' ? 0 : b.admin === 'admin' ? 1 : 2;
+                        if (rankA !== rankB) return rankA - rankB;
+                        return (a.name || a.phone || a.id).localeCompare(b.name || b.phone || b.id);
+                      })
+                      .map((p) => {
+                        const displayName = p.name || p.phone || p.id.split('@')[0];
+                        const subtitle = p.phone && p.name ? p.phone : null;
+                        const initial = displayName.charAt(0).toUpperCase();
+                        const pColor = getParticipantColor(displayName, isDarkMode);
+                        return (
+                          <div key={p.id} className="flex items-center gap-2 py-1.5 px-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ background: pColor }}>
+                              {initial}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                                {displayName}
+                              </div>
+                              {subtitle && (
+                                <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text-tertiary)' }}>
+                                  {subtitle}
+                                </div>
+                              )}
+                            </div>
+                            {p.admin && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{
+                                background: p.admin === 'superadmin' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(0, 161, 156, 0.15)',
+                                color: p.admin === 'superadmin' ? '#ca8a04' : '#00a19c',
+                              }}>
+                                {p.admin === 'superadmin' ? 'Creador' : 'Admin'}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </div>
             <button
               onClick={() => setContactInfoModal(null)}
-              className="mt-6 w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+              className="mt-6 w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex-shrink-0"
               style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
             >
               Cerrar
