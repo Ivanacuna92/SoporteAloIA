@@ -365,6 +365,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [docProjects, setDocProjects] = useState([]);
   const [chatProjectSlug, setChatProjectSlug] = useState(null);
   const [savingChatProject, setSavingChatProject] = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [projectHighlight, setProjectHighlight] = useState(0);
   const saveParticipantName = async (participantJid) => {
     if (savingParticipant || !contact?.phone) return;
     setSavingParticipant(true);
@@ -2657,34 +2660,89 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                   <div className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{contactInfoModal.rawId}</div>
                 </div>
               )}
-              {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (
-                <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
-                  <div className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                    Proyecto en Documentación
+              {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && (() => {
+                const query = projectSearch.trim().toLowerCase();
+                const filtered = query
+                  ? docProjects.filter(p => p.slug.toLowerCase().includes(query))
+                  : docProjects;
+                const pickProject = async (slug) => {
+                  setProjectDropdownOpen(false);
+                  setProjectSearch('');
+                  await handleChangeChatProject(slug);
+                };
+                return (
+                  <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                    <div className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                      Proyecto en Documentación
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={projectDropdownOpen ? projectSearch : (chatProjectSlug || '')}
+                        onChange={(e) => { setProjectSearch(e.target.value); setProjectDropdownOpen(true); setProjectHighlight(0); }}
+                        onFocus={() => { setProjectDropdownOpen(true); setProjectSearch(''); setProjectHighlight(0); }}
+                        onBlur={() => { setTimeout(() => setProjectDropdownOpen(false), 150); }}
+                        onKeyDown={(e) => {
+                          if (!projectDropdownOpen) return;
+                          if (e.key === 'ArrowDown') { e.preventDefault(); setProjectHighlight(h => Math.min(h + 1, filtered.length - 1)); }
+                          else if (e.key === 'ArrowUp') { e.preventDefault(); setProjectHighlight(h => Math.max(h - 1, 0)); }
+                          else if (e.key === 'Enter') { e.preventDefault(); if (filtered[projectHighlight]) pickProject(filtered[projectHighlight].slug); }
+                          else if (e.key === 'Escape') { setProjectDropdownOpen(false); }
+                        }}
+                        placeholder={chatProjectSlug ? '' : 'Escribe para buscar proyecto…'}
+                        disabled={savingChatProject}
+                        className="w-full text-sm px-3 py-2 pr-20 rounded-lg border focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50"
+                        style={{
+                          background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff',
+                          borderColor: 'var(--border-primary)',
+                          color: 'var(--text-primary)',
+                        }}
+                      />
+                      {chatProjectSlug && !projectDropdownOpen && (
+                        <button
+                          onClick={() => handleChangeChatProject(null)}
+                          disabled={savingChatProject}
+                          title="Desvincular"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold px-2 py-1 rounded transition-colors disabled:opacity-40"
+                          style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626' }}
+                        >
+                          Quitar
+                        </button>
+                      )}
+                      {projectDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full mt-1 rounded-lg shadow-lg max-h-56 overflow-y-auto z-20"
+                          style={{ background: isDarkMode ? '#1e293b' : '#ffffff', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}` }}>
+                          {filtered.length === 0 ? (
+                            <div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-tertiary)' }}>
+                              Sin coincidencias
+                            </div>
+                          ) : filtered.map((p, i) => (
+                            <button
+                              key={p.slug}
+                              onMouseDown={(e) => { e.preventDefault(); pickProject(p.slug); }}
+                              onMouseEnter={() => setProjectHighlight(i)}
+                              className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between ${
+                                i === projectHighlight ? 'bg-teal-50 dark:bg-teal-900/30' : ''
+                              } ${p.slug === chatProjectSlug ? 'font-semibold' : ''}`}
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              <span>{p.slug}</span>
+                              {p.slug === chatProjectSlug && (
+                                <span className="text-[10px] px-1.5 rounded" style={{ background: 'rgba(0,161,156,0.15)', color: '#00a19c' }}>actual</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                      {chatProjectSlug
+                        ? `IA leerá la doc de "${chatProjectSlug}" para contextualizar.`
+                        : `Sin doc vinculada (${docProjects.length} proyectos disponibles). Click para buscar.`}
+                    </div>
                   </div>
-                  <select
-                    value={chatProjectSlug || ''}
-                    onChange={(e) => handleChangeChatProject(e.target.value)}
-                    disabled={savingChatProject}
-                    className="w-full text-sm px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50"
-                    style={{
-                      background: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff',
-                      borderColor: 'var(--border-primary)',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    <option value="">— Sin proyecto vinculado —</option>
-                    {docProjects.map((p) => (
-                      <option key={p.slug} value={p.slug}>{p.slug}</option>
-                    ))}
-                  </select>
-                  <div className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                    {chatProjectSlug
-                      ? `Las sugerencias IA leerán la doc de "${chatProjectSlug}" para contextualizar.`
-                      : 'Sin doc vinculada. La IA solo usa el historial del chat.'}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
               {contactInfoModal.isGroup && !contactInfoModal.isGroupMember && groupParticipants.length > 0 && (
                 <div className="pt-2 border-t" style={{ borderColor: 'var(--border-primary)' }}>
                   <div className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)' }}>
