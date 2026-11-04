@@ -639,11 +639,21 @@ class WhatsAppInstanceManager {
                                    msg.message.imageMessage?.contextInfo ||
                                    msg.message.videoMessage?.contextInfo ||
                                    msg.message.documentMessage?.contextInfo ||
-                                   msg.message.audioMessage?.contextInfo || {};
+                                   msg.message.audioMessage?.contextInfo ||
+                                   msg.message.stickerMessage?.contextInfo || {};
                 let quotedMsgInfo = null;
                 if (contextInfo.quotedMessage) {
-                    const quotedBody = contextInfo.quotedMessage.conversation ||
-                                      contextInfo.quotedMessage.extendedTextMessage?.text ||
+                    const qm = contextInfo.quotedMessage;
+                    const quotedBody = qm.conversation ||
+                                      qm.extendedTextMessage?.text ||
+                                      qm.imageMessage?.caption ||
+                                      qm.videoMessage?.caption ||
+                                      qm.documentMessage?.caption ||
+                                      (qm.audioMessage ? '🎤 Audio' : null) ||
+                                      (qm.imageMessage ? '📷 Imagen' : null) ||
+                                      (qm.videoMessage ? '🎥 Video' : null) ||
+                                      (qm.documentMessage ? `📄 ${qm.documentMessage.fileName || 'Documento'}` : null) ||
+                                      (qm.stickerMessage ? 'Sticker' : null) ||
                                       '[Mensaje sin texto]';
                     quotedMsgInfo = {
                         body: quotedBody,
@@ -730,7 +740,9 @@ class WhatsAppInstanceManager {
             const contextInfo = msg.message.extendedTextMessage?.contextInfo ||
                                msg.message.imageMessage?.contextInfo ||
                                msg.message.videoMessage?.contextInfo ||
-                               msg.message.documentMessage?.contextInfo || {};
+                               msg.message.documentMessage?.contextInfo ||
+                               msg.message.audioMessage?.contextInfo ||
+                               msg.message.stickerMessage?.contextInfo || {};
 
             const isForwarded = contextInfo.isForwarded || contextInfo.forwardingScore > 0 || false;
             const forwardingScore = contextInfo.forwardingScore || 0;
@@ -738,10 +750,17 @@ class WhatsAppInstanceManager {
             // Detectar si es respuesta a otro mensaje (quoted message)
             let quotedMsgInfo = null;
             if (contextInfo.quotedMessage) {
-                const quotedBody = contextInfo.quotedMessage.conversation ||
-                                  contextInfo.quotedMessage.extendedTextMessage?.text ||
-                                  contextInfo.quotedMessage.imageMessage?.caption ||
-                                  contextInfo.quotedMessage.videoMessage?.caption ||
+                const qm = contextInfo.quotedMessage;
+                const quotedBody = qm.conversation ||
+                                  qm.extendedTextMessage?.text ||
+                                  qm.imageMessage?.caption ||
+                                  qm.videoMessage?.caption ||
+                                  qm.documentMessage?.caption ||
+                                  (qm.audioMessage ? '🎤 Audio' : null) ||
+                                  (qm.imageMessage ? '📷 Imagen' : null) ||
+                                  (qm.videoMessage ? '🎥 Video' : null) ||
+                                  (qm.documentMessage ? `📄 ${qm.documentMessage.fileName || 'Documento'}` : null) ||
+                                  (qm.stickerMessage ? 'Sticker' : null) ||
                                   '[Mensaje sin texto]';
 
                 quotedMsgInfo = {
