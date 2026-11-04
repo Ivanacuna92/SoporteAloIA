@@ -354,6 +354,17 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
   const [archivingContact, setArchivingContact] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState(null);
+  const highlightTimerRef = useRef(null);
+  const scrollToQuotedMessage = (quotedId) => {
+    if (!quotedId) return;
+    const el = document.getElementById(`msg-${quotedId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedMsgId(quotedId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => setHighlightedMsgId(null), 1600);
+  };
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -1576,7 +1587,9 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                   </svg>
                 </div>
               )}
-              <div className={`max-w-[85%] md:max-w-xs lg:max-w-md px-3 py-2 relative ${
+              <div
+              id={msg.messageId ? `msg-${msg.messageId}` : undefined}
+              className={`max-w-[85%] md:max-w-xs lg:max-w-md px-3 py-2 relative ${
                 isClient ? '' : ''
               }`}
               onTouchStart={(e) => {
@@ -1602,10 +1615,12 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                 backgroundColor: isClient ? 'var(--msg-client-bg)' : (isMessageFromHuman ? 'rgba(59, 130, 246, 0.12)' : 'var(--msg-own-bg)'),
                 color: isClient ? 'var(--text-primary)' : 'var(--msg-own-text)',
                 border: isClient ? '1px solid var(--msg-client-border)' : 'none',
-                boxShadow: messageMenuOpen === index
+                boxShadow: highlightedMsgId && msg.messageId === highlightedMsgId
+                  ? '0 0 0 3px rgba(250, 204, 21, 0.9), 0 4px 16px rgba(0,0,0,0.18)'
+                  : messageMenuOpen === index
                   ? '0 0 0 2px rgba(0, 161, 156, 0.5), 0 4px 16px rgba(0,0,0,0.12)'
                   : (isClient ? '0 2px 8px var(--msg-client-shadow)' : '0 1px 3px rgba(0,0,0,0.08)'),
-                transition: 'box-shadow 0.2s ease',
+                transition: 'box-shadow 0.25s ease',
               }}>
                 {/* Piquito estilo WhatsApp */}
                 {isClient && !sameSender && messageMenuOpen !== index && (
@@ -1817,8 +1832,13 @@ function ChatPanel({ contact, onUpdateContact, onClose }) {
                         })()
                       : 'Usuario';
                     const quotedColor = getParticipantColor(quotedName, isDarkMode);
+                    const quotedId = msg.quotedMsg.messageId;
+                    const quotedExists = quotedId && contact.messages?.some(m => m.messageId === quotedId);
                     return (
-                      <div className="mb-2 p-2 rounded-lg border-l-4 cursor-pointer hover:opacity-90"
+                      <div
+                        className={`mb-2 p-2 rounded-lg border-l-4 ${quotedExists ? 'cursor-pointer hover:opacity-90' : 'cursor-default opacity-80'}`}
+                        onClick={quotedExists ? (e) => { e.stopPropagation(); scrollToQuotedMessage(quotedId); } : undefined}
+                        title={quotedExists ? 'Ir al mensaje original' : 'Mensaje original fuera de la vista cargada'}
                         style={{
                           borderLeftColor: quotedColor,
                           backgroundColor: `color-mix(in srgb, ${quotedColor} ${isDarkMode ? '15%' : '12%'}, ${isDarkMode ? '#1e293b' : '#f8fffe'})`,
