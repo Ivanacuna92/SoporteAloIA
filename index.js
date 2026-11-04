@@ -9,7 +9,6 @@ const databaseInit = require('./src/services/databaseInit');
 const database = require('./src/services/database');
 const aiSuggestionService = require('./src/services/aiSuggestionService');
 const zombieWatchdog = require('./src/services/zombieWatchdog');
-const aiSuggestionService = require('./src/services/aiSuggestionService');
 
 // Exponer el manager globalmente para el servidor web
 global.whatsappInstanceManager = whatsappInstanceManager;
