@@ -1,5 +1,6 @@
-const makeWASocket = require('baileys').default;
-const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = require('baileys');
+// Baileys 7.x es ESM-only; el resto del proyecto es CJS. Cargamos lazy via dynamic import.
+let _baileysPromise = null;
+const loadBaileys = () => (_baileysPromise ||= import('baileys'));
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const database = require('./database');
@@ -11,8 +12,14 @@ const humanModeManager = require('./humanModeManager');
 const followUpService = require('./followUpService');
 const systemConfigService = require('./systemConfigService');
 const pushService = require('./pushService');
+const aiSuggestionService = require('./aiSuggestionService');
 const path = require('path');
 const fs = require('fs').promises;
+
+const AVATAR_OVERRIDES = {
+    '5217714144641@s.whatsapp.net': '/media/profile_pictures/custom-7714144641.png',
+    '271588113051833@lid': '/media/profile_pictures/custom-7714144641.png',
+};
 
 class WhatsAppInstanceManager {
     constructor() {
@@ -66,6 +73,7 @@ class WhatsAppInstanceManager {
     // Obtener foto de perfil de un participante (con cache de 24h)
     async getParticipantProfilePic(sock, jid, displayName) {
         if (!jid) return null;
+        if (AVATAR_OVERRIDES[jid]) return AVATAR_OVERRIDES[jid];
         await this._ensureProfilePicTable();
 
         // Cache en memoria (5 min)
@@ -135,6 +143,7 @@ class WhatsAppInstanceManager {
     // Crear/iniciar instancia para un usuario
     async startInstance(supportUserId, instanceName) {
         try {
+            const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = await loadBaileys();
             console.log(`🚀 Iniciando instancia de WhatsApp para usuario ${supportUserId}...`);
 
             // Verificar si ya existe una instancia activa
@@ -334,6 +343,7 @@ class WhatsAppInstanceManager {
 
     // Manejar actualización de conexión
     async handleConnectionUpdate(supportUserId, update, authPath) {
+        const { DisconnectReason } = await loadBaileys();
         const { connection, lastDisconnect, qr } = update;
         const instanceData = this.instances.get(supportUserId);
 
@@ -630,11 +640,21 @@ class WhatsAppInstanceManager {
                                    msg.message.imageMessage?.contextInfo ||
                                    msg.message.videoMessage?.contextInfo ||
                                    msg.message.documentMessage?.contextInfo ||
-                                   msg.message.audioMessage?.contextInfo || {};
+                                   msg.message.audioMessage?.contextInfo ||
+                                   msg.message.stickerMessage?.contextInfo || {};
                 let quotedMsgInfo = null;
                 if (contextInfo.quotedMessage) {
-                    const quotedBody = contextInfo.quotedMessage.conversation ||
-                                      contextInfo.quotedMessage.extendedTextMessage?.text ||
+                    const qm = contextInfo.quotedMessage;
+                    const quotedBody = qm.conversation ||
+                                      qm.extendedTextMessage?.text ||
+                                      qm.imageMessage?.caption ||
+                                      qm.videoMessage?.caption ||
+                                      qm.documentMessage?.caption ||
+                                      (qm.audioMessage ? '🎤 Audio' : null) ||
+                                      (qm.imageMessage ? '📷 Imagen' : null) ||
+                                      (qm.videoMessage ? '🎥 Video' : null) ||
+                                      (qm.documentMessage ? `📄 ${qm.documentMessage.fileName || 'Documento'}` : null) ||
+                                      (qm.stickerMessage ? 'Sticker' : null) ||
                                       '[Mensaje sin texto]';
                     quotedMsgInfo = {
                         body: quotedBody,
@@ -646,8 +666,26 @@ class WhatsAppInstanceManager {
                 // Detectar si es reenviado
                 const isForwarded = !!(contextInfo.isForwarded || contextInfo.forwardingScore > 0);
 
+                // Evitar duplicado: el endpoint send-message ya pudo haberlo
+                // registrado al enviar. Si message_id ya existe, no insertar de nuevo.
+                if (messageId) {
+                    try {
+                        const existing = await database.query(
+                            'SELECT 1 FROM conversation_logs WHERE message_id = ? LIMIT 1',
+                            [messageId]
+                        );
+                        if (existing.length > 0) {
+                            console.log(`⏭️  fromMe duplicado ignorado (ya registrado): ${messageId}`);
+                            return;
+                        }
+                    } catch (e) { /* si falla el check, seguimos y aceptamos el insert */ }
+                }
+
                 // Registrar mensaje como enviado por soporte
                 await logger.log('soporte', conversation || '', groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, null, quotedMsgInfo);
+
+                // Cualquier mensaje saliente cancela sugerencias IA pendientes del chat
+                try { await aiSuggestionService.cancelPending(groupId, 'cancelled'); } catch (e) { console.log('[ai-suggestions] cancel-fromMe falló:', e.message); }
 
                 // Emitir evento en tiempo real
                 if (global.io) {
@@ -721,7 +759,9 @@ class WhatsAppInstanceManager {
             const contextInfo = msg.message.extendedTextMessage?.contextInfo ||
                                msg.message.imageMessage?.contextInfo ||
                                msg.message.videoMessage?.contextInfo ||
-                               msg.message.documentMessage?.contextInfo || {};
+                               msg.message.documentMessage?.contextInfo ||
+                               msg.message.audioMessage?.contextInfo ||
+                               msg.message.stickerMessage?.contextInfo || {};
 
             const isForwarded = contextInfo.isForwarded || contextInfo.forwardingScore > 0 || false;
             const forwardingScore = contextInfo.forwardingScore || 0;
@@ -729,10 +769,17 @@ class WhatsAppInstanceManager {
             // Detectar si es respuesta a otro mensaje (quoted message)
             let quotedMsgInfo = null;
             if (contextInfo.quotedMessage) {
-                const quotedBody = contextInfo.quotedMessage.conversation ||
-                                  contextInfo.quotedMessage.extendedTextMessage?.text ||
-                                  contextInfo.quotedMessage.imageMessage?.caption ||
-                                  contextInfo.quotedMessage.videoMessage?.caption ||
+                const qm = contextInfo.quotedMessage;
+                const quotedBody = qm.conversation ||
+                                  qm.extendedTextMessage?.text ||
+                                  qm.imageMessage?.caption ||
+                                  qm.videoMessage?.caption ||
+                                  qm.documentMessage?.caption ||
+                                  (qm.audioMessage ? '🎤 Audio' : null) ||
+                                  (qm.imageMessage ? '📷 Imagen' : null) ||
+                                  (qm.videoMessage ? '🎥 Video' : null) ||
+                                  (qm.documentMessage ? `📄 ${qm.documentMessage.fileName || 'Documento'}` : null) ||
+                                  (qm.stickerMessage ? 'Sticker' : null) ||
                                   '[Mensaje sin texto]';
 
                 quotedMsgInfo = {
@@ -950,6 +997,19 @@ class WhatsAppInstanceManager {
             const participant = msg.key.participant || null;
             await logger.log('cliente', messageText, groupId, userName, true, null, supportUserId, messageId, mediaInfo, isForwarded, participant, quotedMsgInfo);
 
+            // Disparar sugerencias IA (async, no bloquea el handler)
+            // Dispara si hay texto O si hay media — Qwen entiende audios/imagenes/videos
+            if ((messageText && messageText.trim()) || mediaInfo?.has_media) {
+                aiSuggestionService.generateSuggestions({
+                    supportUserId,
+                    chatPhone: groupId,
+                    triggerMessageId: messageId,
+                    participantJid: participant,
+                    messageText,
+                    mediaInfo
+                }).catch(err => console.error('[ai-suggestions] generate fail:', err.message));
+            }
+
             // Emitir evento en tiempo real via WebSocket
             if (global.io) {
                 global.io.emit('new-message', {
@@ -1091,6 +1151,7 @@ class WhatsAppInstanceManager {
             }
 
             // Descargar el medio
+            const { downloadMediaMessage } = await loadBaileys();
             const buffer = await downloadMediaMessage(
                 msg,
                 'buffer',
@@ -1130,6 +1191,7 @@ class WhatsAppInstanceManager {
 
     // Descargar y guardar foto de perfil
     async downloadAndSaveProfilePicture(sock, jid, type = 'group') {
+        if (AVATAR_OVERRIDES[jid]) return AVATAR_OVERRIDES[jid];
         try {
             // Intentar obtener la URL de la foto de perfil
             const profilePicUrl = await sock.profilePictureUrl(jid, 'image');

@@ -4,6 +4,8 @@
 const authService = require('../services/authService');
 const database = require('../services/database');
 const pushService = require('../services/pushService');
+const aiSuggestionService = require('../services/aiSuggestionService');
+const docsProjectService = require('../services/docsProjectService');
 const multer = require('multer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -269,6 +271,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
             // armar un index por chat_phone para pegarlos en la respuesta sin
             // un fetch extra por chat.
             const tagsByPhone = {};
+            const projectByPhone = {};
             if (assignments.length > 0) {
                 const phones = assignments.map((a) => a.client_phone);
                 const placeholders = phones.map(() => '?').join(',');
@@ -284,6 +287,16 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     (tagsByPhone[r.chat_phone] = tagsByPhone[r.chat_phone] || [])
                         .push({ id: r.id, name: r.name, color: r.color });
                 }
+                // Links a proyectos de documentacion-aloia (N-a-M, una sola query)
+                try {
+                    const linkRows = await database.query(
+                        `SELECT chat_phone, project_slug FROM chat_project_links WHERE chat_phone IN (${placeholders}) ORDER BY project_slug`,
+                        phones
+                    );
+                    for (const r of linkRows) {
+                        (projectByPhone[r.chat_phone] = projectByPhone[r.chat_phone] || []).push(r.project_slug);
+                    }
+                } catch {}
             }
 
             // Obtener logs para cada cliente asignado
@@ -340,6 +353,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         isArchived: Boolean(assignment.is_archived),
                         botLeftGroupAt: assignment.bot_left_group_at || null,
                         tags: tagsByPhone[assignment.client_phone] || [],
+                        projectSlugs: projectByPhone[assignment.client_phone] || [],
                         messages: messages.reverse(), // DESC (más reciente primero) — el frontend reversea de nuevo
                         totalMessages: counts.total,
                         userMessages: counts.userMessages,
@@ -456,12 +470,25 @@ module.exports = function(app, requireAuth, requireAdmin) {
             console.log('📨 [SEND-MESSAGE] ChatId formateado:', chatId);
             console.log('📨 [SEND-MESSAGE] Llamando instanceManager.sendMessage...');
 
-            await instanceManager.sendMessage(req.user.id, chatId, message);
+            const sendResult = await instanceManager.sendMessage(req.user.id, chatId, message);
 
             console.log('✅ [SEND-MESSAGE] Mensaje enviado exitosamente');
 
-            // NO registrar aquí - el instance manager lo hará cuando WhatsApp confirme (fromMe event)
-            // Esto evita mensajes duplicados
+            // Registrar directamente al enviar. El evento fromMe de Baileys no se
+            // está disparando de forma confiable, así que escribimos el log aquí.
+            // El handler de messages.upsert tiene check de duplicado por message_id.
+            try {
+                const logger = require('../services/logger');
+                const user = await database.findOne('support_users', 'id = ?', [req.user.id]);
+                const userName = user ? user.name : 'Soporte';
+                const messageId = sendResult?.key?.id || null;
+                await logger.log('soporte', message, phone, userName, true, null, req.user.id, messageId);
+                if (global.io) {
+                    global.io.emit('new-message', { phone, userName, message });
+                }
+            } catch (logErr) {
+                console.error('[send-message] fallo registrando en DB:', logErr.message);
+            }
 
             res.json({
                 success: true,
@@ -1099,7 +1126,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
             // Enriquecer con cache de group_participants
             try {
                 const cached = await database.query(
-                    'SELECT participant_jid, display_name, phone_jid FROM group_participants WHERE group_jid = ?',
+                    'SELECT participant_jid, display_name, custom_name, phone_jid FROM group_participants WHERE group_jid = ?',
                     [groupJid]
                 );
                 const cachedMap = {};
@@ -1112,6 +1139,11 @@ module.exports = function(app, requireAuth, requireAdmin) {
                     }
                     if (!p.name && cachedMap[p.id]?.display_name) {
                         p.name = cachedMap[p.id].display_name;
+                    }
+                    // custom_name (alias puesto a mano desde el panel) siempre gana
+                    if (cachedMap[p.id]?.custom_name) {
+                        p.customName = cachedMap[p.id].custom_name;
+                        p.name = cachedMap[p.id].custom_name;
                     }
                     // Sólo usar el teléfono cacheado si es un JID real (@s.whatsapp.net), nunca un @lid
                     if (!p.phone && cachedMap[p.id]?.phone_jid && cachedMap[p.id].phone_jid.endsWith('@s.whatsapp.net')) {
@@ -1128,6 +1160,171 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error obteniendo participantes del grupo:', error);
             res.status(500).json({ error: 'Error obteniendo participantes', details: error.message });
+        }
+    });
+
+    // ===== ENDPOINTS DE DOCS PROJECTS =====
+
+    // Lista de proyectos disponibles en el mirror de documentacion-aloia
+    app.get('/api/my-instance/doc-projects', requireAuth, async (req, res) => {
+        try {
+            const projects = await docsProjectService.listProjects();
+            res.json(projects);
+        } catch (e) {
+            res.status(500).json({ error: 'Error listando proyectos', details: e.message });
+        }
+    });
+
+    // Proyectos vinculados al chat (0..N). Devuelve siempre un array de slugs.
+    app.get('/api/my-instance/chat-project/:chatPhone', requireAuth, async (req, res) => {
+        try {
+            const rows = await database.query(
+                'SELECT project_slug FROM chat_project_links WHERE chat_phone = ? ORDER BY project_slug',
+                [req.params.chatPhone]
+            );
+            res.json({ chatPhone: req.params.chatPhone, projectSlugs: rows.map(r => r.project_slug) });
+        } catch (e) {
+            res.status(500).json({ error: 'Error obteniendo links', details: e.message });
+        }
+    });
+
+    // Agregar un proyecto al chat (idempotente)
+    app.post('/api/my-instance/chat-project/add', requireAuth, async (req, res) => {
+        try {
+            const { chatPhone, projectSlug } = req.body || {};
+            if (!chatPhone || !projectSlug) return res.status(400).json({ error: 'chatPhone y projectSlug requeridos' });
+            if (!(await docsProjectService.projectExists(projectSlug))) {
+                return res.status(400).json({ error: 'Proyecto no existe en el mirror' });
+            }
+            await database.query(
+                'INSERT IGNORE INTO chat_project_links (chat_phone, project_slug) VALUES (?, ?)',
+                [chatPhone, projectSlug]
+            );
+            const rows = await database.query(
+                'SELECT project_slug FROM chat_project_links WHERE chat_phone = ? ORDER BY project_slug',
+                [chatPhone]
+            );
+            res.json({ ok: true, chatPhone, projectSlugs: rows.map(r => r.project_slug) });
+        } catch (e) {
+            res.status(500).json({ error: 'Error agregando proyecto', details: e.message });
+        }
+    });
+
+    // Quitar un proyecto del chat
+    app.post('/api/my-instance/chat-project/remove', requireAuth, async (req, res) => {
+        try {
+            const { chatPhone, projectSlug } = req.body || {};
+            if (!chatPhone || !projectSlug) return res.status(400).json({ error: 'chatPhone y projectSlug requeridos' });
+            await database.query(
+                'DELETE FROM chat_project_links WHERE chat_phone = ? AND project_slug = ?',
+                [chatPhone, projectSlug]
+            );
+            const rows = await database.query(
+                'SELECT project_slug FROM chat_project_links WHERE chat_phone = ? ORDER BY project_slug',
+                [chatPhone]
+            );
+            res.json({ ok: true, chatPhone, projectSlugs: rows.map(r => r.project_slug) });
+        } catch (e) {
+            res.status(500).json({ error: 'Error quitando proyecto', details: e.message });
+        }
+    });
+
+    // Toggle de sugerencias IA por chat
+    app.get('/api/my-instance/ai-settings/:chatPhone', requireAuth, async (req, res) => {
+        try {
+            const row = await database.findOne('chat_ai_settings', 'chat_phone = ?', [req.params.chatPhone]);
+            res.json({ aiEnabled: row ? row.ai_enabled !== 0 : true });
+        } catch (e) {
+            res.status(500).json({ error: 'Error leyendo settings', details: e.message });
+        }
+    });
+    app.post('/api/my-instance/ai-settings', requireAuth, async (req, res) => {
+        try {
+            const { chatPhone, aiEnabled } = req.body || {};
+            if (!chatPhone) return res.status(400).json({ error: 'chatPhone requerido' });
+            await database.query(
+                `INSERT INTO chat_ai_settings (chat_phone, ai_enabled) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE ai_enabled = VALUES(ai_enabled)`,
+                [chatPhone, aiEnabled ? 1 : 0]
+            );
+            res.json({ ok: true, chatPhone, aiEnabled: !!aiEnabled });
+        } catch (e) {
+            res.status(500).json({ error: 'Error guardando settings', details: e.message });
+        }
+    });
+
+    // ===== ENDPOINTS DE SUGERENCIAS IA =====
+
+    // Pending de un chat (si existe)
+    app.get('/api/my-instance/ai-suggestions/:chatPhone', requireAuth, async (req, res) => {
+        try {
+            const pending = await aiSuggestionService.getPendingForChat(req.params.chatPhone);
+            res.json(pending ? {
+                id: pending.id,
+                option1: pending.option1,
+                option2: pending.option2,
+                expiresAt: pending.expires_at,
+                triggerMessageId: pending.trigger_message_id,
+                createdAt: pending.created_at
+            } : null);
+        } catch (e) {
+            res.status(500).json({ error: 'Error obteniendo sugerencia', details: e.message });
+        }
+    });
+
+    // Enviar la opcion elegida (1 o 2)
+    app.post('/api/my-instance/ai-suggestions/:id/send', requireAuth, async (req, res) => {
+        try {
+            const choice = req.body?.choice === 2 ? 2 : 1;
+            const result = await aiSuggestionService.sendOption(parseInt(req.params.id, 10), choice);
+            res.json(result);
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    // Descartar
+    app.post('/api/my-instance/ai-suggestions/:id/dismiss', requireAuth, async (req, res) => {
+        try {
+            const result = await aiSuggestionService.dismiss(parseInt(req.params.id, 10));
+            res.json(result);
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    // Fijar / limpiar el nombre personalizado de un participante
+    app.post('/api/my-instance/group-participant/custom-name', requireAuth, async (req, res) => {
+        try {
+            const { groupId, participantJid, customName } = req.body || {};
+            if (!groupId || !participantJid) {
+                return res.status(400).json({ error: 'groupId y participantJid son requeridos' });
+            }
+            const groupJid = groupId.includes('@') ? groupId : `${groupId}@g.us`;
+            const trimmed = typeof customName === 'string' ? customName.trim() : null;
+            const value = trimmed ? trimmed.substring(0, 255) : null;
+
+            const existing = await database.findOne(
+                'group_participants',
+                'group_jid = ? AND participant_jid = ?',
+                [groupJid, participantJid]
+            );
+            if (existing) {
+                await database.query(
+                    'UPDATE group_participants SET custom_name = ? WHERE group_jid = ? AND participant_jid = ?',
+                    [value, groupJid, participantJid]
+                );
+            } else {
+                await database.query(
+                    `INSERT INTO group_participants (group_jid, participant_jid, custom_name)
+                     VALUES (?, ?, ?)`,
+                    [groupJid, participantJid, value]
+                );
+            }
+            res.json({ ok: true, customName: value });
+        } catch (error) {
+            console.error('Error guardando custom_name:', error);
+            res.status(500).json({ error: 'Error guardando nombre', details: error.message });
         }
     });
 
